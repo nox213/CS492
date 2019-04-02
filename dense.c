@@ -7,7 +7,7 @@
 #include <pthread.h>
 #include <time.h>
 
-#define NANO_TO_SEC(x) ((long) ((x) / 10e9))
+#define NANO_TO_SEC(x) ((double) ((x) / 10e9))
 #define NANO_TO_MILI(x) ((long) ((x) / 10e6))
 #define SEC_TO_NANO(x) ((long) ((x) * 10e9))
 #define SEC_TO_MILI(x) ((long) ((x) * 10e3))
@@ -92,38 +92,41 @@ int main(int argc, char *argv[])
 		}
 	}
 
+
+	clock_gettime(CLOCK_REALTIME, &begin);
+
 	init_task_queue(n);
 	aux.a = (double **) a;
 	aux.b = (double **) b;
 	aux.c = (double **) c;
 	aux.n = n;
 
-	clock_gettime(CLOCK_REALTIME, &begin);
-	for (i = 0; i < p; i++)
-		pthread_create(&p_threads[i], NULL, mul_matrix, (void *) &aux);
+	if (p == 1)
+		mul_matrix_single(n, a, b, c);
+	else  {
 
-	for (i = 0; i < p; i++)
-		pthread_join(p_threads[i], NULL);
+		for (i = 0; i < p; i++)
+			pthread_create(&p_threads[i], NULL, mul_matrix, (void *) &aux);
+
+		for (i = 0; i < p; i++)
+			pthread_join(p_threads[i], NULL);
+	}
 	clock_gettime(CLOCK_REALTIME, &end);
-	
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
-	printf("elapsed time: %ld (msec)\n", NANO_TO_MILI(elapsed));
 
-	/*
+	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+
 	mul_matrix_single(n, a, b, answer);
 	bool is_correct = true;
-	for (i = 0; i < n; i++)
+	for (i = 0; i < n && is_correct == true; i++)
 		for (j = 0; j < n; j++)
 			if (!nearly_equal(c[i][j], answer[i][j], 0)) {
+				printf("%lf %lf\n", c[i][j], answer[i][j]);
 				is_correct = false;
 				break;
 			}
 
 	printf("%s\n", is_correct ? "correct" : "wrong");
-	*/
-
-	//print_array(n, c);
-	//print_array(n, answer);
 
 	return 0;
 }
@@ -194,7 +197,7 @@ void *mul_matrix(void *arg)
 	int n = aux->n;
 	struct task *t;
 	double (*local_sum)[n], (*a)[n], (*b)[n], (*c)[n];
-	
+
 	a = (double (*)[n]) aux->a;
 	b = (double (*)[n]) aux->b;
 	c = (double (*)[n]) aux->c;
