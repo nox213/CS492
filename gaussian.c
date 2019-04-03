@@ -135,16 +135,15 @@ int main(int argc, char *argv[])
 
 	clock_gettime(CLOCK_REALTIME, &end);
 
+	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+
 	for (i = 0; i < n; i++) {
 		double ax = 0;
 		for (j = 0; j < n; j++)
 			ax += a[i][j] * x[j];
 		printf("%g\n", ax - b[i]);
 	}
-
-
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
 
 	return 0;
 }
