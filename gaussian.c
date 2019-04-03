@@ -20,12 +20,7 @@ struct args {
 };
 
 bool is_ready;
-bool is_done;
 
-pthread_mutex_t cond_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_mutex_t main_thread_lock = PTHREAD_MUTEX_INITIALIZER;
-pthread_cond_t task_ready = PTHREAD_COND_INITIALIZER;
-pthread_cond_t task_done = PTHREAD_COND_INITIALIZER;
 pthread_barrier_t barrier_thread;
 
 void print_array(int n, double arr[][n]);
@@ -99,8 +94,7 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &begin);
 
 	is_ready = false;
-	is_done = false;
-	for (i = 0; i < p; i++) {
+	for (i = 1; i < p; i++) {
 		aux[i].a = (double **) a;
 		aux[i].b =  b;
 		aux[i].n = n;
@@ -109,13 +103,25 @@ int main(int argc, char *argv[])
 		pthread_create(&p_threads[i], NULL, elimination, (void *) &aux[i]);
 	}
 
+	int t_num = 1;
+	int step, start, block_size;
+	int k;
 	for (j = 0; j < n - 1; j++) {
 		int row_max = maxloc(j, n, a);
 		swap_row(n, a, b, j, row_max); 
-		is_ready = true;
-		while (!is_done)
-			pthread_cond_broadcast(&task_ready);
-		is_done = false;
+		pthread_barrier_wait(&barrier_thread);
+		for (step = 0; step < n - 1; step++) {
+			block_size = (n - 1 - step) / p;
+			start = (step + 1) + (block_size * (t_num - 1));
+			for (i = start; i < min(start + block_size, n); i++) {
+				double m = a[i][step] / a[step][step];
+				for (k = step + 1; k < n; k++) {
+					a[i][k] -= m * a[step][k];
+					b[i] -= m * b[step];
+				}
+			}
+		}
+		pthread_barrier_wait(&barrier_thread);
 	}
 
 	clock_gettime(CLOCK_REALTIME, &end);
@@ -209,15 +215,10 @@ void *elimination(void *arg)
 	a = (double (*)[n]) aux->a;
 	b = aux->b;
 
-	pthread_mutex_lock(&cond_lock);
-	while (!is_ready)
-		pthread_cond_wait(&task_ready, &cond_lock);
-	pthread_mutex_unlock(&cond_lock);
-
-
 	for (step = 0; step < n - 1; step++) {
+		pthread_barrier_wait(&barrier_thread);
 		block_size = (n - 1 - step) / p;
-		start = (step + 1) + (block_size * t_num);
+		start = (step + 1) + (block_size * (t_num - 1));
 		/* Remained row is caculated by last thread */
 		if (p == t_num)
 			block_size += (n - 1 - step) % p;
@@ -229,15 +230,6 @@ void *elimination(void *arg)
 			}
 		}
 		pthread_barrier_wait(&barrier_thread);	
-		if (t_num == 1) 
-			is_done = true;		
-		pthread_mutex_lock(&cond_lock);
-		while (!is_ready) 
-			pthread_cond_wait(&task_ready, &cond_lock);
-		pthread_mutex_unlock(&cond_lock);
-		pthread_barrier_wait(&barrier_thread);	
-		if (t_num == 1)
-			is_ready = false;
 	}
 }
 
