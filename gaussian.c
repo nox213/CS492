@@ -26,6 +26,7 @@ pthread_barrier_t barrier_thread;
 void print_array(int n, double arr[][n]);
 void swap_row(int n, double arr[][n], double b[n], int x, int y);
 void *elimination(void *arg);
+void back_substitution(int n, double a[][n], double b[n], double x[n]);
 int maxloc(int start, int n, double (*a)[n]);
 bool nearly_equal(double a, double b, double epsilon); 
 
@@ -42,7 +43,7 @@ static inline max(const double a, const double b)
 int main(int argc, char *argv[])
 {
 	int n, p;
-	int i, j;
+	int i, j, k;
 	struct timespec begin, end;
 	long elapsed;
 
@@ -54,7 +55,7 @@ int main(int argc, char *argv[])
 	n = strtol(argv[1], NULL, 10);
 	p = strtol(argv[2], NULL, 10);
 
-	double (*a)[n], (*b), (*serial)[n], (*serial_b);
+	double (*a)[n], (*b), (*x), (*serial)[n], (*serial_b), (*serial_x);
 	pthread_t p_threads[p];
 	struct args aux[p];
 
@@ -66,6 +67,11 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
+	if ((x = malloc(sizeof(double) * n)) == NULL) {
+		fprintf(stderr, "malloc error: %d\n", __LINE__);
+		return 0;
+	}
+
 	if ((serial = malloc(sizeof(double) * (n * n))) == NULL) {
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
@@ -75,17 +81,23 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
+	if ((serial_x = malloc(sizeof(double) * n)) == NULL) {
+		fprintf(stderr, "malloc error: %d\n", __LINE__);
+		return 0;
+	}
 
 	memset(p_threads, 0, sizeof(p_threads));
 	memset(a, 0, sizeof(double) * (n * n));
 	memset(b, 0, sizeof(double) * n);
+	memset(x, 0, sizeof(double) * n);
 	memset(serial, 0, sizeof(double) * (n * n));
 	memset(serial_b, 0, sizeof(double) * n);
+	memset(serial_x, 0, sizeof(double) * n);
 
 	for (i = 0; i < n; i++) {
-		b[i] = drand48();
+		serial_b[i] = b[i] = drand48();
 		for (j = 0; j < n; j++) {
-			a[i][j] = drand48();
+			serial[i][j] = a[i][j] = drand48();
 		}
 	}
 
@@ -104,27 +116,32 @@ int main(int argc, char *argv[])
 	}
 
 	int t_num = 1;
-	int step, start, block_size;
-	int k;
+	int start, block_size;
 	for (j = 0; j < n - 1; j++) {
 		int row_max = maxloc(j, n, a);
 		swap_row(n, a, b, j, row_max); 
 		pthread_barrier_wait(&barrier_thread);
-		for (step = 0; step < n - 1; step++) {
-			block_size = (n - 1 - step) / p;
-			start = (step + 1) + (block_size * (t_num - 1));
-			for (i = start; i < min(start + block_size, n); i++) {
-				double m = a[i][step] / a[step][step];
-				for (k = step + 1; k < n; k++) {
-					a[i][k] -= m * a[step][k];
-					b[i] -= m * b[step];
-				}
-			}
+		block_size = (n - 1 - j) / p;
+		start = (j + 1) + (block_size * (t_num - 1));
+		for (i = start; i < min(start + block_size, n); i++) {
+			double m = a[i][j] / a[j][j];
+			for (k = j; k < n; k++) 
+				a[i][k] -= m * a[j][k];
+			b[i] -= m * b[j];
 		}
 		pthread_barrier_wait(&barrier_thread);
 	}
+	back_substitution(n, a, b, x);
 
 	clock_gettime(CLOCK_REALTIME, &end);
+
+	for (i = 0; i < n; i++) {
+		double ax = 0;
+		for (j = 0; j < n; j++)
+			ax += a[i][j] * x[j];
+		printf("%g\n", ax - b[i]);
+	}
+
 
 	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
 	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
@@ -136,7 +153,7 @@ void print_array(int n, double arr[][n])
 {
 	int i, j;
 
-	for (i = 0; i < 1; i++) {
+	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) 
 			printf("%g ", arr[i][j]);
 		printf("\n");
@@ -172,10 +189,11 @@ bool nearly_equal(double a, double b, double epsilon)
 int maxloc(int start, int n, double (*a)[n])
 {
 	int i, row_max, col = start;
-	double cur_max = 0;
+	double cur_max;
 
-	row_max = -1;
-	for (i = start; i < n; i++)
+	row_max = start;
+	cur_max = fabs(a[start][col]);
+	for (i = start + 1; i < n; i++)
 		if (cur_max < fabs(a[i][col])) {
 			cur_max = fabs(a[i][col]);
 			row_max = i;
@@ -195,7 +213,7 @@ void swap_row(int n, double arr[][n], double b[n], int x, int y)
 
 	memcpy(temp, arr[x], sizeof(arr[x]));
 	memcpy(arr[x], arr[y], sizeof(arr[x]));
-	memcpy(arr[x], temp, sizeof(arr[x]));
+	memcpy(arr[y], temp, sizeof(arr[x]));
 
 	t = b[x] ;
 	b[x] = b[y];
@@ -220,17 +238,26 @@ void *elimination(void *arg)
 		block_size = (n - 1 - step) / p;
 		start = (step + 1) + (block_size * (t_num - 1));
 		/* Remained row is caculated by last thread */
-		if (p == t_num)
+		if (p == t_num) 
 			block_size += (n - 1 - step) % p;
 		for (i = start; i < min(start + block_size, n); i++) {
 			double m = a[i][step] / a[step][step];
-			for (j = step + 1; j < n; j++) {
+			for (j = step; j < n; j++) 
 				a[i][j] -= m * a[step][j];
-				b[i] -= m * b[step];
-			}
+			b[i] -= m * b[step];
 		}
 		pthread_barrier_wait(&barrier_thread);	
 	}
 }
 
+void back_substitution(int n, double a[][n], double b[n], double x[n])
+{
+	int i, j;
 
+	for (i = n - 1; i >= 0; i--) {
+		x[i] = b[i];
+		for (j = i + 1; j < n; j++) 
+			x[i] -= a[i][j] * x[j];
+		x[i] /= a[i][i];
+	}
+}
