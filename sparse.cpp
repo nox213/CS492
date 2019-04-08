@@ -1,8 +1,11 @@
 #include "mmreader.hpp"
 #include <time.h>
+#include <cstring>
 #include <iostream>
 #include <sys/time.h>
 #include <unistd.h>
+
+int num_p;
 
 bool
 SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
@@ -60,7 +63,7 @@ SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
 
     A->row[ 0 ] = 0;
 
-    for (int32_t i = 0; i < A->nnze; i++)
+    for(int32_t i = 0; i < A->nnze; i++)
     {
         A->col[ i ] = coords[ i ].y;
         A->val[ i ] = coords[ i ].val;
@@ -79,74 +82,93 @@ SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
 
 void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
 {
-    // TODO: Implement matrix multiplication with single thread. C=A*B
+	// TODO: Implement matrix multiplication with single thread. C=A*B
+	C->val = (float *) malloc(sizeof(float) * C->nrow * C->ncol);
+	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
+
+	for (int r = 0; r < A->nrow; r++) {
+		for (int i = A->row[r]; i < A->row[r+1]; i++)
+			for (int j = 0; j < B->ncol; j++)
+				for (int k = 0; k < B->nrow; k++) {
+					C->val[r*C->ncol+j] += A->val[i] * B->val[k*B->ncol+j];
+				}
+	}
 }
+
 void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
 {
-    // TODO: Implement matrix multiplication with pthread. C=A*B
+	// TODO: Implement matrix multiplication with pthread. C=A*B
+	C->val = (float *) malloc(sizeof(float) * A->nrow * B->ncol);
 }
 
 uint64_t GetTimeStamp() {
-    struct timeval tv;
-    gettimeofday(&tv,NULL);
-    return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
 }
 
 int main(int argc, char **argv)
 {
-    struct sparse_mtx A;
-    if(!SCsrMatrixfromFile(&A, argv[1]))
-    {
-        std::cout << "read failed." << std::endl;
-        return 0;
-    }
+	struct sparse_mtx A;
+	int num_p;
+	if(!SCsrMatrixfromFile(&A, argv[1]))
+	{
+		std::cout << "read failed." << std::endl;
+		return 0;
+	}
 
-    struct dense_mtx B;
-    B.nrow = A.ncol;
-    B.ncol = atoi(argv[2]);
-    if(B.ncol < 0)
-    {
-        free(A.row);
-        free(A.col);
-        free(A.val);
-        std::cerr << "Invalid argument for the number of columns of B." << std::endl;
-    }
-    B.val = (float *)malloc(sizeof(float) * B.nrow * B.ncol);
+	struct dense_mtx B;
+	B.nrow = A.ncol;
+	B.ncol = atoi(argv[2]);
+	if(B.ncol < 0)
+	{
+		free(A.row);
+		free(A.col);
+		free(A.val);
+		std::cerr << "Invalid argument for the number of columns of B." << std::endl;
+	}
+	B.val = (float *)malloc(sizeof(float) * B.nrow * B.ncol);
 
-    srand((unsigned int)time(NULL));
-    for(int i = 0; i < B.nrow; i++)
-    {
-        for(int j = 0; j < B.ncol; j++)
-        {
-            B.val[B.ncol * i + j] = ((float)rand()/(float)(RAND_MAX)) * ((rand() % 2) ? 1.0f : -1.0f);
-        }
-    }
+	srand((unsigned int)time(NULL));
+	for(int i = 0; i < B.nrow; i++)
+	{
+		for(int j = 0; j < B.ncol; j++)
+		{
+			B.val[B.ncol * i + j] = ((float)rand()/(float)(RAND_MAX)) * ((rand() % 2) ? 1.0f : -1.0f);
+		}
+	}
 
-    struct dense_mtx C1, C2;
-    C1.val = NULL;
-    C2.val = NULL;
+	struct dense_mtx C1, C2;
+	C1.val = NULL;
+	C1.nrow = A.nrow;
+	C1.ncol = B.ncol;
+	C2.val = NULL;
+	C2.nrow = A.nrow;
+	C2.ncol = B.ncol;
 
-    std::cout << "Single Thread Computation Start" << std::endl;
-    uint64_t start = GetTimeStamp();
-    multiply_single(&A, &B, &C1);
-    uint64_t end = GetTimeStamp();
-    std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
-    std::cout << "Multi Thread Computation Start" << std::endl;
-    start = GetTimeStamp();
-    multiply_pthread(&A, &B, &C2);
-    end = GetTimeStamp();
-    std::cout << "Multi Thread Computation End: " << end - start << " us." << std::endl;
+	//num_p = atoi(argv[3]);
 
-    // TODO: Testing Code by comparing C1 and C2
+	std::cout << "Single Thread Computation Start" << std::endl;
+	uint64_t start = GetTimeStamp();
+	multiply_single(&A, &B, &C1);
+	uint64_t end = GetTimeStamp();
+	std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
+	std::cout << "Multi Thread Computation Start" << std::endl;
+	start = GetTimeStamp();
+	multiply_pthread(&A, &B, &C2);
+	end = GetTimeStamp();
+	std::cout << "Multi Thread Computation End: " << end - start << " us." << std::endl;
 
-    free(A.row);
-    free(A.col);
-    free(A.val);
-    free(B.val);
-    if(C1.val != NULL)
-        free(C1.val);
-    if(C2.val != NULL)
-        free(C2.val);
-    
-    return 0;
+	// TODO: Testing Code by comparing C1 and C2
+
+	free(A.row);
+	free(A.col);
+	free(A.val);
+	free(B.val);
+	if(C1.val != NULL)
+		free(C1.val);
+	if(C2.val != NULL)
+		free(C2.val);
+
+	return 0;
 }

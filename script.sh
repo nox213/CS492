@@ -1,5 +1,3 @@
 #/bin/bash
 
-g++ sparse.cpp mmreader.cpp -o sparse
-
-./sparse cant.mtx 64
+./sparse.out ./matrix/cant.mtx 64

@@ -37,7 +37,7 @@ void *mul_matrix(void *arg);
 void mul_matrix_single(int n, double (*a)[n], double (*b)[n], double (*answer)[n]);
 bool nearly_equal(double a, double b, double epsilon); 
 
-static inline min(const double a, const double b)
+static inline double min(const double a, const double b)
 {
 	return a < b ? a : b;
 }

@@ -1,5 +1,5 @@
-.mtx
-.swp
+*.mtx
+*.swp
 #text
 *.txt
 
