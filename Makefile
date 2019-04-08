@@ -4,13 +4,13 @@ dense.out : dense.o
 	gcc -o dense.out -pthread -lm $<
 
 dense.o : dense.c
-	gcc -c $<
+	gcc -c -lm $<
 
 gaussian.out : gaussian.o
-	gcc -o gaussian.out -pthread -lm $<
+	gcc -o gaussian.out -pthread $< -lm
 
 gaussian.o : gaussian.c
-	gcc -c $<
+	gcc -c $< -lm
 
 sparse.out : sparse.o mmreader.o mmreader.hpp
 	g++ -o sparse.out -pthread -lm -std=c++11 $< mmreader.o

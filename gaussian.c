@@ -55,7 +55,7 @@ int main(int argc, char *argv[])
 	n = strtol(argv[1], NULL, 10);
 	p = strtol(argv[2], NULL, 10);
 
-	double (*a)[n], (*b), (*x), (*serial)[n], (*serial_b), (*serial_x);
+	double (*a)[n], (*b), (*x), (*serial)[n], (*serial_b), (*serial_x), (*A)[n], (*B);
 	pthread_t p_threads[p];
 	struct args aux[p];
 
@@ -85,6 +85,14 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
+	if ((A = malloc(sizeof(double) * (n * n))) == NULL) {
+		fprintf(stderr, "malloc error: %d\n", __LINE__);
+		return 0;
+	}
+	if ((B = malloc(sizeof(double) * n)) == NULL) {
+		fprintf(stderr, "malloc error: %d\n", __LINE__);
+		return 0;
+	}
 
 	memset(p_threads, 0, sizeof(p_threads));
 	memset(a, 0, sizeof(double) * (n * n));
@@ -95,9 +103,9 @@ int main(int argc, char *argv[])
 	memset(serial_x, 0, sizeof(double) * n);
 
 	for (i = 0; i < n; i++) {
-		serial_b[i] = b[i] = drand48();
+		B[i] = serial_b[i] = b[i] = drand48();
 		for (j = 0; j < n; j++) {
-			serial[i][j] = a[i][j] = drand48();
+			A[i][j] = serial[i][j] = a[i][j] = drand48();
 		}
 	}
 
@@ -138,12 +146,15 @@ int main(int argc, char *argv[])
 	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
 	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
 
+	double l2norm = 0;
 	for (i = 0; i < n; i++) {
 		double ax = 0;
 		for (j = 0; j < n; j++)
-			ax += a[i][j] * x[j];
-		printf("%g\n", ax - b[i]);
+			ax += A[i][j] * x[j];
+		l2norm += (ax - B[i]) * (ax - B[i]);
+
 	}
+	printf("%lf\n", sqrt(l2norm));
 
 	return 0;
 }
