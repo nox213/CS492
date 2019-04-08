@@ -120,7 +120,7 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
 	memset(local_sum, 0, sizeof(float) * C->nrow * C->ncol);
 
-	for (i = 1; i < p - 1; i++) {
+	for (i = 1; i < p; i++) {
 		aux[i].A = A;
 		aux[i].B = B;
 		aux[i].C = C;
@@ -145,7 +145,7 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 			
 	}
 	
-	for (i = 0; i < p - 1; i++)
+	for (i = 1; i < p; i++)
 		pthread_join(p_threads[i], NULL);
 
 	for (i = 0; i < C->nrow; i++)
