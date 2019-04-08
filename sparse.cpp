@@ -5,7 +5,18 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-int num_p;
+struct args {
+	struct sparse_mtx *A;
+	struct dense_mtx *B;
+	struct dense_mtx *C;
+	int p;
+	int t_num;
+};
+pthread_mutex_t C_lock = PTHREAD_MUTEX_INITIALIZER;
+
+void *mul_sparse_dense(void *arg);
+int find_row(struct sparse_mtx *A, int val_i);
+
 
 bool
 SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
@@ -95,10 +106,52 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 	}
 }
 
-void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
+void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C, int p)
 {
 	// TODO: Implement matrix multiplication with pthread. C=A*B
+	int i, j, k;
+	struct args aux[p];
+	pthread_t p_threads[p];
+	float (*local_sum)[C->ncol];
+
 	C->val = (float *) malloc(sizeof(float) * A->nrow * B->ncol);
+	local_sum = (float (*)[C->ncol]) malloc(sizeof(float) * A->nrow * B->ncol);
+
+	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
+	memset(local_sum, 0, sizeof(float) * C->nrow * C->ncol);
+
+	for (i = 1; i < p - 1; i++) {
+		aux[i].A = A;
+		aux[i].B = B;
+		aux[i].C = C;
+		aux[i].p = p;
+		aux[i].t_num = i;
+		pthread_create(&p_threads[i], NULL, mul_sparse_dense, &aux[i]);
+	}
+
+	int t_num = 0;
+	int start, num_element;
+
+	start = 0;
+	num_element = A->nnze / p;
+	if ((t_num + 1) == p)
+		num_element += A->nnze % p;
+	for (i = start; i < start + num_element; i++) {
+		int row = find_row(A, i);
+		for (j = 0; j < C->ncol; j++) {
+		 	for (k = 0; k < B->nrow; k++)
+				local_sum[i][j] += A->val[i] * B->val[k*B->ncol+j];
+		}
+			
+	}
+	
+	for (i = 0; i < p - 1; i++)
+		pthread_join(p_threads[i], NULL);
+
+	for (i = 0; i < C->nrow; i++)
+		for (j = 0; j < C->ncol; j++)
+			C->val[i*C->ncol+j] += local_sum[i][j];
+
 }
 
 uint64_t GetTimeStamp() {
@@ -110,7 +163,7 @@ uint64_t GetTimeStamp() {
 int main(int argc, char **argv)
 {
 	struct sparse_mtx A;
-	int num_p;
+	int p;
 	if(!SCsrMatrixfromFile(&A, argv[1]))
 	{
 		std::cout << "read failed." << std::endl;
@@ -150,12 +203,12 @@ int main(int argc, char **argv)
 
 	std::cout << "Single Thread Computation Start" << std::endl;
 	uint64_t start = GetTimeStamp();
-	multiply_single(&A, &B, &C1);
+	//multiply_single(&A, &B, &C1);
 	uint64_t end = GetTimeStamp();
 	std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
 	std::cout << "Multi Thread Computation Start" << std::endl;
 	start = GetTimeStamp();
-	multiply_pthread(&A, &B, &C2);
+	multiply_pthread(&A, &B, &C2, p);
 	end = GetTimeStamp();
 	std::cout << "Multi Thread Computation End: " << end - start << " us." << std::endl;
 
@@ -171,4 +224,49 @@ int main(int argc, char **argv)
 		free(C2.val);
 
 	return 0;
+}
+
+void *mul_sparse_dense(void *arg)
+{
+	int i, j, k;
+	struct args *aux = (struct args *) arg;
+	struct sparse_mtx *A = aux->A;
+	struct dense_mtx *B = aux->B;
+	struct dense_mtx *C = aux->C;
+	int p = aux->p;
+	int t_num = aux->t_num;
+	float (*local_sum)[C->ncol];
+
+	local_sum = (float (*)[C->ncol]) malloc(sizeof(float) * A->nrow * B->ncol);
+	memset(local_sum, 0, sizeof(float) * C->nrow * C->ncol);
+
+	int start, num_element;
+
+	num_element = A->nnze / p;
+	start = num_element * t_num;
+	if ((t_num + 1) == p)
+		num_element += A->nnze % p;
+	for (i = start; i < start + num_element; i++) {
+		int row = find_row(A, i);
+		for (j = 0; j < C->ncol; j++) {
+		 	for (k = 0; k < B->nrow; k++)
+				local_sum[i][j] += A->val[i] * B->val[k*B->ncol+j];
+		}
+			
+	}
+	
+	pthread_mutex_lock(&C_lock);
+	for (i = 0; i < C->nrow; i++)
+		for (j = 0; j < C->ncol; j++)
+			C->val[i*C->ncol+j] += local_sum[i][j];
+	pthread_mutex_unlock(&C_lock);
+}
+int find_row(struct sparse_mtx *A, int val_i)
+{
+	int i;
+
+	for (i = 0; i < A->nrow; i++)
+		if (A->row[i] <= val_i && A->row[i+1])
+			return i;
+	return -1;
 }
