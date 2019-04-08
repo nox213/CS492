@@ -140,7 +140,7 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 		int row = find_row(A, i);
 		for (j = 0; j < C->ncol; j++) {
 		 	for (k = 0; k < B->nrow; k++)
-				local_sum[i][j] += A->val[i] * B->val[k*B->ncol+j];
+				local_sum[row][j] += A->val[i] * B->val[k*B->ncol+j];
 		}
 			
 	}
@@ -199,7 +199,7 @@ int main(int argc, char **argv)
 	C2.nrow = A.nrow;
 	C2.ncol = B.ncol;
 
-	//num_p = atoi(argv[3]);
+	p = atoi(argv[3]);
 
 	std::cout << "Single Thread Computation Start" << std::endl;
 	uint64_t start = GetTimeStamp();
@@ -250,7 +250,7 @@ void *mul_sparse_dense(void *arg)
 		int row = find_row(A, i);
 		for (j = 0; j < C->ncol; j++) {
 		 	for (k = 0; k < B->nrow; k++)
-				local_sum[i][j] += A->val[i] * B->val[k*B->ncol+j];
+				local_sum[row][j] += A->val[i] * B->val[k*B->ncol+j];
 		}
 			
 	}
@@ -260,13 +260,15 @@ void *mul_sparse_dense(void *arg)
 		for (j = 0; j < C->ncol; j++)
 			C->val[i*C->ncol+j] += local_sum[i][j];
 	pthread_mutex_unlock(&C_lock);
+
+	return NULL;
 }
 int find_row(struct sparse_mtx *A, int val_i)
 {
 	int i;
 
 	for (i = 0; i < A->nrow; i++)
-		if (A->row[i] <= val_i && A->row[i+1])
+		if ((A->row[i] <= val_i) && (val_i < A->row[i+1]))
 			return i;
 	return -1;
 }
