@@ -30,7 +30,7 @@ void back_substitution(int n, double a[][n], double b[n], double x[n]);
 int maxloc(int start, int n, double (*a)[n]);
 bool nearly_equal(double a, double b, double epsilon); 
 
-static inline double (const double a, const double b)
+static inline double min(const double a, const double b)
 {
 	return a < b ? a : b;
 }
