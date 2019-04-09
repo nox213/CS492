@@ -127,16 +127,12 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 	float (*local_sum)[C->ncol];
 	int start, num_row;
 	int num_ele;
-	int cur_start;
+	int cur_start, base;
 
 	C->val = (float *) malloc(sizeof(float) * A->nrow * B->ncol);
-	local_sum = (float (*)[C->ncol]) malloc(sizeof(float) * A->nrow * B->ncol);
-
 	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
-	memset(local_sum, 0, sizeof(float) * C->nrow * C->ncol);
 
 	mean_ele = A->nnze / p;
-
 	num_ele = 0;
 	num_row = 0;
 	start = 0;
@@ -152,7 +148,7 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 		aux[i].A = A;
 		aux[i].B = B;
 		aux[i].C = C;
-		aux[i].start = cur_start;
+		aux[i].start = base = cur_start;
 		aux[i].num_row = 0;
 		aux[i].t_num = i;
 		num_ele = 0;
@@ -163,7 +159,7 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 			while (cur_start < A->nrow) {
 				aux[i].num_row++;
 				cur_start++;
-				num_ele += A->row[num_row] - A->row[num_row-1];
+				num_ele += A->row[base+num_row] - A->row[base+num_row-1];
 				if (num_ele > mean_ele)
 					break;
 			}
@@ -224,6 +220,8 @@ int main(int argc, char **argv)
 	C2.ncol = B.ncol;
 
 	p = atoi(argv[3]);
+	
+	printf("%s\n", argv[1]);
 
 	std::cout << "Single Thread Computation Start" << std::endl;
 	uint64_t start = GetTimeStamp();
@@ -269,10 +267,6 @@ void *mul_sparse_dense(void *arg)
 	struct dense_mtx *C = aux->C;
 	int start = aux->start;
 	int num_row = aux->num_row;
-	float (*local_sum)[C->ncol];
-
-	local_sum = (float (*)[C->ncol]) malloc(sizeof(float) * A->nrow * B->ncol);
-	memset(local_sum, 0, sizeof(float) * C->nrow * C->ncol);
 
 	int row;
 	for (row = start; row < start + num_row; row++)
