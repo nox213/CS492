@@ -24,5 +24,6 @@ clean :
 	rm -f dense.o dense.out
 	rm -f gaussian.o gaussian.out
 	rm -f sparse.o sparse.out
+	rm -f mmreader.o mmreader.out
 	
 

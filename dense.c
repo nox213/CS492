@@ -93,6 +93,7 @@ int main(int argc, char *argv[])
 	}
 
 
+	printf("Multi thread computaion start\n");
 	clock_gettime(CLOCK_REALTIME, &begin);
 
 	init_task_queue(n);
@@ -114,9 +115,17 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &end);
 
 	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("Multi thread computaion end\n");
 	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
 
+	printf("Single thread computaion start\n");
+	clock_gettime(CLOCK_REALTIME, &begin);
 	mul_matrix_single(n, a, b, answer);
+	clock_gettime(CLOCK_REALTIME, &end);
+	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("Single thread computaion end\n");
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+
 	bool is_correct = true;
 	for (i = 0; i < n && is_correct == true; i++)
 		for (j = 0; j < n; j++)
@@ -256,10 +265,10 @@ bool nearly_equal(double a, double b, double epsilon)
 
 	if (a == b) { // shortcut, handles infinities
 		return true;
-	} else if (a == 0 || b == 0 || diff < double_min_normal) {
+	} else if (a == 0 || b == 0 || diff < DBL_MIN) {
 		// a or b is zero or both are extremely close to it
 		// relative error is less meaningful here
-		return diff < (epsilon * double_min_normal);
+		return diff < (epsilon * DBL_MIN);
 	} else { // use relative error
 		return diff / min((abs_a + abs_b), DBL_MAX) < epsilon;
 	}

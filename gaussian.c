@@ -25,6 +25,7 @@ pthread_barrier_t barrier_thread;
 
 void print_array(int n, double arr[][n]);
 void swap_row(int n, double arr[][n], double b[n], int x, int y);
+void single_elimination(int n, double a[][n], double b[n]);
 void *elimination(void *arg);
 void back_substitution(int n, double a[][n], double b[n], double x[n]);
 int maxloc(int start, int n, double (*a)[n]);
@@ -55,7 +56,7 @@ int main(int argc, char *argv[])
 	n = strtol(argv[1], NULL, 10);
 	p = strtol(argv[2], NULL, 10);
 
-	double (*a)[n], (*b), (*x), (*serial)[n], (*serial_b), (*serial_x), (*A)[n], (*B);
+	double (*a)[n], (*b), (*x), (*serial_a)[n], (*serial_b), (*serial_x), (*A)[n], (*B);
 	pthread_t p_threads[p];
 	struct args aux[p];
 
@@ -72,7 +73,7 @@ int main(int argc, char *argv[])
 		return 0;
 	}
 
-	if ((serial = malloc(sizeof(double) * (n * n))) == NULL) {
+	if ((serial_a = malloc(sizeof(double) * (n * n))) == NULL) {
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
@@ -98,19 +99,20 @@ int main(int argc, char *argv[])
 	memset(a, 0, sizeof(double) * (n * n));
 	memset(b, 0, sizeof(double) * n);
 	memset(x, 0, sizeof(double) * n);
-	memset(serial, 0, sizeof(double) * (n * n));
+	memset(serial_a, 0, sizeof(double) * (n * n));
 	memset(serial_b, 0, sizeof(double) * n);
 	memset(serial_x, 0, sizeof(double) * n);
 
 	for (i = 0; i < n; i++) {
 		B[i] = serial_b[i] = b[i] = drand48();
 		for (j = 0; j < n; j++) {
-			A[i][j] = serial[i][j] = a[i][j] = drand48();
+			A[i][j] = serial_a[i][j] = a[i][j] = drand48();
 		}
 	}
 
 	pthread_barrier_init(&barrier_thread, NULL, p);
 
+	printf("Multi thread computaion start\n");
 	clock_gettime(CLOCK_REALTIME, &begin);
 
 	is_ready = false;
@@ -144,6 +146,7 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &end);
 
 	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("Multi thread computaion end\n");
 	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
 
 	double l2norm = 0;
@@ -154,7 +157,26 @@ int main(int argc, char *argv[])
 		l2norm += (ax - B[i]) * (ax - B[i]);
 
 	}
-	printf("%lf\n", sqrt(l2norm));
+	printf("l2norm: %g\n", sqrt(l2norm));
+
+	printf("Single thread computaion start\n");
+	clock_gettime(CLOCK_REALTIME, &begin);
+	single_elimination(n, serial_a, serial_b);
+	back_substitution(n, serial_a, serial_b, serial_x);
+	clock_gettime(CLOCK_REALTIME, &end);
+	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	printf("Single thread computaion end\n");
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+
+	l2norm = 0;
+	for (i = 0; i < n; i++) {
+		double ax = 0;
+		for (j = 0; j < n; j++)
+			ax += A[i][j] * x[j];
+		l2norm += (ax - B[i]) * (ax - B[i]);
+
+	}
+	printf("l2norm of serial: %g\n", sqrt(l2norm));
 
 	return 0;
 }
@@ -271,5 +293,21 @@ void back_substitution(int n, double a[][n], double b[n], double x[n])
 		for (j = i + 1; j < n; j++) 
 			x[i] -= a[i][j] * x[j];
 		x[i] /= a[i][i];
+	}
+}
+
+void single_elimination(int n, double a[][n], double b[n])
+{
+	int i, j, k;
+
+	for (j = 0; j < n - 1; j++) {
+		int row_max = maxloc(j, n, a);
+		swap_row(n, a, b, j, row_max); 
+		for (i = j + 1; i < n; i++) {
+			double m = a[i][j] / a[j][j];
+			for (k = j; k < n; k++) 
+				a[i][k] -= m * a[j][k];
+			b[i] -= m * b[j];
+		}
 	}
 }
