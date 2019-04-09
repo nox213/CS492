@@ -258,6 +258,8 @@ void *elimination(void *arg)
 		}
 		pthread_barrier_wait(&barrier_thread);	
 	}
+
+	return NULL;
 }
 
 void back_substitution(int n, double a[][n], double b[n], double x[n])

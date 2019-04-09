@@ -4,6 +4,10 @@
 #include <iostream>
 #include <sys/time.h>
 #include <unistd.h>
+#include <algorithm>
+#include <limits>
+
+using namespace std;
 
 struct args {
 	struct sparse_mtx *A;
@@ -16,6 +20,7 @@ pthread_mutex_t C_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void *mul_sparse_dense(void *arg);
 int find_row(struct sparse_mtx *A, int val_i);
+bool nearly_equal(float a, float b, float epsilon);
 
 
 bool
@@ -91,19 +96,22 @@ SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
     return true;
 }
 
+uint64_t GetTimeStamp() {
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+}
+
 void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
 {
 	// TODO: Implement matrix multiplication with single thread. C=A*B
 	C->val = (float *) malloc(sizeof(float) * C->nrow * C->ncol);
 	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
 
-	for (int r = 0; r < A->nrow; r++) {
-		for (int i = A->row[r]; i < A->row[r+1]; i++)
-			for (int j = 0; j < B->ncol; j++)
-				for (int k = 0; k < B->nrow; k++) {
-					C->val[r*C->ncol+j] += A->val[i] * B->val[k*B->ncol+j];
-				}
-	}
+	for (int r = 0; r < A->nrow; r++) 
+		for (int i = A->row[r]; i < A->row[r+1]; i++) 
+			for (int j = 0; j < C->ncol; j++)
+				C->val[r*C->ncol+j] += A->val[i] * B->val[A->col[i]*B->ncol+j];
 }
 
 void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C, int p)
@@ -136,15 +144,19 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 	num_element = A->nnze / p;
 	if ((t_num + 1) == p)
 		num_element += A->nnze % p;
-	for (i = start; i < start + num_element; i++) {
-		int row = find_row(A, i);
-		for (j = 0; j < C->ncol; j++) {
-		 	for (k = 0; k < B->nrow; k++)
-				local_sum[row][j] += A->val[i] * B->val[k*B->ncol+j];
+	int row, last_row;
+	int cur_val = start;
+	row = find_row(A, start);
+	last_row = find_row(A, start + num_element - 1);
+	for (; row <= last_row; row++) {
+		for (i = cur_val; (i < start + num_element) && (i < A->row[row+1]); i++, cur_val++) {
+			for (j = 0; j < C->ncol; j++) {
+				local_sum[row][j] += A->val[i] * B->val[A->col[i]*B->ncol+j];
+			}
+
 		}
-			
 	}
-	
+
 	for (i = 1; i < p; i++)
 		pthread_join(p_threads[i], NULL);
 
@@ -152,13 +164,10 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 		for (j = 0; j < C->ncol; j++)
 			C->val[i*C->ncol+j] += local_sum[i][j];
 
+
 }
 
-uint64_t GetTimeStamp() {
-	struct timeval tv;
-	gettimeofday(&tv,NULL);
-	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
-}
+
 
 int main(int argc, char **argv)
 {
@@ -203,7 +212,7 @@ int main(int argc, char **argv)
 
 	std::cout << "Single Thread Computation Start" << std::endl;
 	uint64_t start = GetTimeStamp();
-	//multiply_single(&A, &B, &C1);
+	multiply_single(&A, &B, &C1);
 	uint64_t end = GetTimeStamp();
 	std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
 	std::cout << "Multi Thread Computation Start" << std::endl;
@@ -213,6 +222,16 @@ int main(int argc, char **argv)
 	std::cout << "Multi Thread Computation End: " << end - start << " us." << std::endl;
 
 	// TODO: Testing Code by comparing C1 and C2
+	bool is_correct = true;
+	for (int i = 0; i < C1.nrow && is_correct == true; i++)
+		for (int j = 0; j < C1.ncol; j++)
+			if (!nearly_equal(C1.val[i*C1.ncol+j], C2.val[i*C2.ncol+j], 0)) {
+				printf("%lf %lf\n", C1.val[i*C1.ncol+j], C2.val[i*C2.ncol+j]);
+				is_correct = false;
+				break;
+			}
+
+	printf("%s\n", is_correct ? "correct" : "wrong");
 
 	free(A.row);
 	free(A.col);
@@ -246,15 +265,19 @@ void *mul_sparse_dense(void *arg)
 	start = num_element * t_num;
 	if ((t_num + 1) == p)
 		num_element += A->nnze % p;
-	for (i = start; i < start + num_element; i++) {
-		int row = find_row(A, i);
-		for (j = 0; j < C->ncol; j++) {
-		 	for (k = 0; k < B->nrow; k++)
-				local_sum[row][j] += A->val[i] * B->val[k*B->ncol+j];
+	int row, last_row;
+	int cur_val = start;
+	row = find_row(A, start);
+	last_row = find_row(A, start + num_element - 1);
+	for (; row <= last_row; row++) {
+		for (i = cur_val; (i < start + num_element) && (i < A->row[row+1]); i++, cur_val++) {
+			for (j = 0; j < C->ncol; j++) {
+				local_sum[row][j] += A->val[i] * B->val[A->col[i]*B->ncol+j];
+			}
+
 		}
-			
 	}
-	
+
 	pthread_mutex_lock(&C_lock);
 	for (i = 0; i < C->nrow; i++)
 		for (j = 0; j < C->ncol; j++)
@@ -271,4 +294,29 @@ int find_row(struct sparse_mtx *A, int val_i)
 		if ((A->row[i] <= val_i) && (val_i < A->row[i+1]))
 			return i;
 	return -1;
+}
+
+bool nearly_equal(float a, float b, float epsilon) 
+{
+	float abs_a = abs(a);
+	float abs_b = abs(b);
+	float diff = abs(a - b);
+	float float_min_normal;
+	float float_max;
+	long temp = 1;
+	float_min_normal = *((float *) &temp);
+	float_max = numeric_limits<float>::max();
+
+	if (epsilon == 0)
+		epsilon = 0.00001;
+
+	if (a == b) { // shortcut, handles infinities
+		return true;
+	} else if (a == 0 || b == 0 || diff < float_min_normal) {
+		// a or b is zero or both are extremely close to it
+		// relative error is less meaningful here
+		return diff < (epsilon * float_min_normal);
+	} else { // use relative error
+		return diff / min((abs_a + abs_b), float_max) < epsilon;
+	}
 }
