@@ -152,14 +152,16 @@ void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mt
 		aux[i].num_row = 0;
 		aux[i].t_num = i;
 		num_ele = 0;
+
 		if (i == p - 1) {
-			aux[i].num_row = A->nrow - cur_start + 1;
+			if (cur_start < A->nrow)
+				aux[i].num_row = A->nrow - cur_start;
 		}
 		else {
 			while (cur_start < A->nrow) {
 				aux[i].num_row++;
 				cur_start++;
-				num_ele += A->row[base+num_row] - A->row[base+num_row-1];
+				num_ele += A->row[base+aux[i].num_row] - A->row[base+aux[i].num_row-1];
 				if (num_ele > mean_ele)
 					break;
 			}
@@ -220,7 +222,7 @@ int main(int argc, char **argv)
 	C2.ncol = B.ncol;
 
 	p = atoi(argv[3]);
-	
+
 	printf("%s\n", argv[1]);
 
 	std::cout << "Single Thread Computation Start" << std::endl;

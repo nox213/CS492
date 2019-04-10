@@ -1,21 +1,21 @@
 #!/bin/sh
 
-echo 'n = 1000 p = 1'
-./dense.out 1000 1 > t1_1
-echo 'n = 1000 p = 3'
-./dense.out 1000 3 > t1_3
+echo 'n = 1000 p = 2'
+./dense.out 1000 2 > t1_1
+echo 'n = 1000 p = 4'
+./dense.out 1000 4 > t1_3
 echo 'n = 1000 p = 6'
 ./dense.out 1000 6 > t1_6
-echo 'n = 3000 p = 1'
-./dense.out 3000 1 > t2_1
-echo 'n = 3000 p = 3'
-./dense.out 3000 3 > t2_3
+echo 'n = 3000 p = 2'
+./dense.out 3000 2 > t2_1
+echo 'n = 3000 p = 4'
+./dense.out 3000 4 > t2_3
 echo 'n = 3000 p = 6'
 ./dense.out 3000 6 > t2_6
-echo 'n = 5000 p = 1'
-./dense.out 5000 1 > t3_1
-echo 'n = 5000 p = 3'
-./dense.out 5000 3 > t3_3
+echo 'n = 5000 p = 2'
+./dense.out 5000 2 > t3_1
+echo 'n = 5000 p = 4'
+./dense.out 5000 4 > t3_3
 echo 'n = 5000 p = 6'
 ./dense.out 5000 6 > t3_6
 
