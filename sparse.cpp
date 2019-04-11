@@ -18,13 +18,9 @@ struct args {
 	int t_num;
 };
 
-
-pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
-
 void *mul_sparse_dense(void *arg);
 int find_row(struct sparse_mtx *A, int val_i);
 bool nearly_equal(float a, float b, float epsilon);
-static inline struct task get_task(void);
 
 bool
 SCsrMatrixfromFile(struct sparse_mtx *A, const char* filePath)
