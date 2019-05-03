@@ -6,16 +6,16 @@ dense.out : dense.o
 	gcc $(OPTION) -o dense.out  -lm $<
 
 dense.o : dense.c
-	gcc $(OPTION) -c -O3 -lm $<
+	gcc $(OPTION) -c -lm $<
 
 gaussian.out : gaussian.o
 	gcc $(OPTION) -o gaussian.out $< -lm
 
 gaussian.o : gaussian.c
-	gcc $(OPTION) -c -O3 $< -lm
+	gcc $(OPTION) -c $< -lm
 
 sparse.out : sparse.o mmreader.o mmreader.hpp
-	g++ $(OPTION) -o sparse.out -lm -std=c++11 $< mmreader.o
+	g++ $(OPTION) -o sparse.out -std=c++11 $< mmreader.o
 
 sparse.o : sparse.cpp mmreader.hpp
 	g++ $(OPTION) -c $< -std=c++11

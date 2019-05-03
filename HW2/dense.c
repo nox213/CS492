@@ -26,7 +26,7 @@ int main(int argc, char *argv[])
 	int n, p;
 	int i, j, k;
 	struct timespec begin, end;
-	long elapsed;
+	long elapsed_s, elapsed_p;
 
 	if (argc < 3) {
 		fprintf(stderr, "dense n p\n");
@@ -72,19 +72,16 @@ int main(int argc, char *argv[])
 	clock_gettime(CLOCK_REALTIME, &begin);
 	mul_matrix_single(n, a, b, answer);
 	clock_gettime(CLOCK_REALTIME, &end);
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	elapsed_s = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
 	printf("Single thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed_s));
 
 	double sum;
-	int chunk = (n * n) / p;
 	printf("Multi thread computaion start\n");
 	clock_gettime(CLOCK_REALTIME, &begin);
 	transepose(n, b);
 	omp_set_num_threads(p);
-#pragma omp parallel
-	{
-#pragma omp parallel for shared(a, b, c, n) private(i, j, k, sum) schedule(static, chunk)
+#pragma omp parallel for shared(a, b, c, n) private(i, j, k, sum) schedule(static)
 		for (i = 0; i < n; i++) {
 			for (j = 0; j < n; j++) {
 				sum = 0;
@@ -94,13 +91,13 @@ int main(int argc, char *argv[])
 				c[i][j] = sum;
 			}
 		}
-	}
-
 	clock_gettime(CLOCK_REALTIME, &end);
 
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	elapsed_p = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
 	printf("Multi thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed_p));
+
+	printf("\nSpeed up is %g\n", (double) elapsed_s / elapsed_p);
 
 	bool is_correct = true;
 	for (i = 0; i < n && is_correct == true; i++)

@@ -221,16 +221,23 @@ int main(int argc, char **argv)
 
 	printf("%s\n", argv[1]);
 
+	uint64_t elapsed_s, elapsed_p;
+
 	std::cout << "Single Thread Computation Start" << std::endl;
 	uint64_t start = GetTimeStamp();
 	multiply_single(&A, &B, &C1);
 	uint64_t end = GetTimeStamp();
 	std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
+	elapsed_s = end - start;
+
 	std::cout << "Multi Thread Computation Start" << std::endl;
 	start = GetTimeStamp();
 	multiply_pthread(&A, &B, &C2, p);
 	end = GetTimeStamp();
 	std::cout << "Multi Thread Computation End: " << end - start << " us." << std::endl;
+	elapsed_p = end - start;
+
+	printf("Speed up is %g\n", (double) elapsed_s / elapsed_p);
 
 	// TODO: Testing Code by comparing C1 and C2
 	bool is_correct = true;
