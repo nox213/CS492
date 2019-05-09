@@ -3,10 +3,10 @@ OPTION = -O2 -fopenmp
 all : dense.out gaussian.out sparse.out
 
 dense.out : dense.o
-	gcc $(OPTION) -o dense.out  -lm $<
+	gcc $(OPTION) -o dense.out -lm  -g $<
 
 dense.o : dense.c
-	gcc $(OPTION) -c -lm $<
+	gcc $(OPTION) -c -lm  -g $<
 
 gaussian.out : gaussian.o
 	gcc $(OPTION) -o gaussian.out $< -lm

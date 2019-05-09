@@ -21,6 +21,11 @@ static inline double min(const double a, const double b)
 	return a < b ? a : b;
 }
 
+static inline int int_min(const int a, const int b)
+{
+	return a < b ? a : b;
+}
+
 int main(int argc, char *argv[])
 {
 	int n, p;
@@ -76,21 +81,45 @@ int main(int argc, char *argv[])
 	printf("Single thread computaion end\n");
 	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed_s));
 
-	double sum;
+	int block = 50;
+	int block_per_row = n / block;
+	int num_block = block_per_row * block_per_row;
+
 	printf("Multi thread computaion start\n");
 	clock_gettime(CLOCK_REALTIME, &begin);
-	transepose(n, b);
 	omp_set_num_threads(p);
-#pragma omp parallel for shared(a, b, c, n) private(i, j, k, sum) schedule(static)
-		for (i = 0; i < n; i++) {
-			for (j = 0; j < n; j++) {
-				sum = 0;
-				for (k = 0; k < n; k++) {
-					sum += a[i][k] * b[j][k];
+#pragma omp parallel shared(a, b, c, n, block, p, block_per_row, num_block) private(i, j, k) 
+	{
+		int tid = omp_get_thread_num();
+		int block_per_thread = num_block / p;
+		int block_start = (block_per_thread * tid);
+		int bs;
+		int cur_block;
+		double (*local)[n] = malloc(sizeof(double) * n * n);
+
+		if (tid == p - 1)
+			block_per_thread += num_block % p;
+		
+		memset(local, 0, sizeof(double) * n * n);
+
+		for (bs = block_start, cur_block = 0; cur_block < block_per_thread; cur_block++) {
+			int jj = (bs + cur_block) / block_per_row * block;
+			int kk = (bs + cur_block) % block_per_row * block;
+			for (i = 0; i < n; i++) {
+				for (j = jj; j < jj + block; j++) {
+					double sum = 0;
+					for (k = kk; k < kk + block; k++) {
+						sum += a[i][k] * b[k][j];
+					}
+					local[i][j] += sum;
 				}
-				c[i][j] = sum;
 			}
 		}
+#pragma omp critical
+		for (i = 0; i < n; i++)
+			for (j = 0; j < n; j++)
+				c[i][j] += local[i][j];
+	}
 	clock_gettime(CLOCK_REALTIME, &end);
 
 	elapsed_p = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
