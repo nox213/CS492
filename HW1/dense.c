@@ -5,12 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
-
-#define NANO_TO_SEC(x) ((double) ((x) / 10e9))
-#define NANO_TO_MILI(x) ((long) ((x) / 10e6))
-#define SEC_TO_NANO(x) ((long) ((x) * 10e9))
-#define SEC_TO_MILI(x) ((long) ((x) * 10e3))
+#include <sys/time.h>
+#include <stdint.h>
 
 struct task {
 	int i;
@@ -31,6 +27,12 @@ struct args {
 
 pthread_mutex_t c_lock = PTHREAD_MUTEX_INITIALIZER;
 
+uint64_t GetTimeStamp() {
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+}
+
 void print_array(int n, double arr[][n]);
 void init_task_queue(int n);
 void *mul_matrix(void *arg);
@@ -47,7 +49,7 @@ int main(int argc, char *argv[])
 	int n, p;
 	int i, j;
 	struct args aux;
-	struct timespec begin, end;
+	uint64_t begin, end;
 	long elapsed;
 
 	if (argc < 3) {
@@ -94,7 +96,7 @@ int main(int argc, char *argv[])
 
 
 	printf("Multi thread computaion start\n");
-	clock_gettime(CLOCK_REALTIME, &begin);
+	begin = GetTimeStamp();
 
 	init_task_queue(n);
 	aux.a = (double **) a;
@@ -112,19 +114,19 @@ int main(int argc, char *argv[])
 		for (i = 0; i < p; i++)
 			pthread_join(p_threads[i], NULL);
 	}
-	clock_gettime(CLOCK_REALTIME, &end);
+	end = GetTimeStamp();
 
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	elapsed = end - begin;
 	printf("Multi thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %ld (usec)\n", end - begin);
 
 	printf("Single thread computaion start\n");
-	clock_gettime(CLOCK_REALTIME, &begin);
+	begin = GetTimeStamp();
 	mul_matrix_single(n, a, b, answer);
-	clock_gettime(CLOCK_REALTIME, &end);
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	end = GetTimeStamp();
+	elapsed = end - begin;
 	printf("Single thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %ld (sec)\n", elapsed);
 
 	bool is_correct = true;
 	for (i = 0; i < n && is_correct == true; i++)

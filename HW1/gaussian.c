@@ -5,12 +5,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <time.h>
-
-#define NANO_TO_SEC(x) ((double) ((x) / 10e9))
-#define NANO_TO_MILI(x) ((long) ((x) / 10e6))
-#define SEC_TO_NANO(x) ((long) ((x) * 10e9))
-#define SEC_TO_MILI(x) ((long) ((x) * 10e3))
+#include <sys/time.h>
+#include <stdint.h>
 
 struct args {
 	double **a, *b;
@@ -31,6 +27,12 @@ void back_substitution(int n, double a[][n], double b[n], double x[n]);
 int maxloc(int start, int n, double (*a)[n]);
 bool nearly_equal(double a, double b, double epsilon); 
 
+uint64_t GetTimeStamp() {
+	struct timeval tv;
+	gettimeofday(&tv,NULL);
+	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
+}
+
 static inline double min(const double a, const double b)
 {
 	return a < b ? a : b;
@@ -45,7 +47,7 @@ int main(int argc, char *argv[])
 {
 	int n, p;
 	int i, j, k;
-	struct timespec begin, end;
+	uint64_t begin, end;
 	long elapsed;
 
 	if (argc < 3) {
@@ -113,7 +115,7 @@ int main(int argc, char *argv[])
 	pthread_barrier_init(&barrier_thread, NULL, p);
 
 	printf("Multi thread computaion start\n");
-	clock_gettime(CLOCK_REALTIME, &begin);
+	begin = GetTimeStamp();
 
 	is_ready = false;
 	for (i = 1; i < p; i++) {
@@ -143,11 +145,11 @@ int main(int argc, char *argv[])
 	}
 	back_substitution(n, a, b, x);
 
-	clock_gettime(CLOCK_REALTIME, &end);
+	end = GetTimeStamp();
 
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	elapsed = end - begin;
 	printf("Multi thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %ld (usec)\n", elapsed);
 
 	double l2norm = 0;
 	for (i = 0; i < n; i++) {
@@ -160,13 +162,13 @@ int main(int argc, char *argv[])
 	printf("l2norm: %g\n", sqrt(l2norm));
 
 	printf("Single thread computaion start\n");
-	clock_gettime(CLOCK_REALTIME, &begin);
+	begin = GetTimeStamp();
 	single_elimination(n, serial_a, serial_b);
 	back_substitution(n, serial_a, serial_b, serial_x);
-	clock_gettime(CLOCK_REALTIME, &end);
-	elapsed = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + ((end.tv_nsec - begin.tv_nsec));
+	end = GetTimeStamp();
+	elapsed = end - begin;
 	printf("Single thread computaion end\n");
-	printf("elapsed time: %lf (sec)\n", NANO_TO_SEC(elapsed));
+	printf("elapsed time: %ld (usec)\n", elapsed);
 
 	l2norm = 0;
 	for (i = 0; i < n; i++) {
