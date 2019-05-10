@@ -174,7 +174,7 @@ int main(int argc, char *argv[])
 
 	}
 	printf("l2norm of serial: %g\n", sqrt(l2norm));
-	printf("speed up is %g\n", (double) elapsed_s / elapsed_p);
+	printf("speed up is %g\n", (double) elapsed_s / elapsed_P);
 
 	return 0;
 }

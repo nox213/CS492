@@ -5,8 +5,10 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <sys/time.h>
+#include <time.h>
 #include <stdint.h>
+
+#define SEC_TO_NANO(x) (((x) * 1000000000L))
 
 struct task {
 	int i;
@@ -27,12 +29,6 @@ struct args {
 
 pthread_mutex_t c_lock = PTHREAD_MUTEX_INITIALIZER;
 
-uint64_t GetTimeStamp() {
-	struct timeval tv;
-	gettimeofday(&tv,NULL);
-	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
-}
-
 void print_array(int n, double arr[][n]);
 void init_task_queue(int n);
 void *mul_matrix(void *arg);
@@ -49,8 +45,8 @@ int main(int argc, char *argv[])
 	int n, p;
 	int i, j;
 	struct args aux;
-	uint64_t begin, end;
-	long elapsed;
+	struct timespec begin, end;
+	uint64_t elapsed_s, elapsed_p;
 
 	if (argc < 3) {
 		fprintf(stderr, "dense n p\n");
@@ -96,7 +92,7 @@ int main(int argc, char *argv[])
 
 
 	printf("Multi thread computaion start\n");
-	begin = GetTimeStamp();
+	clock_gettime(CLOCK_REALTIME, &begin);
 
 	init_task_queue(n);
 	aux.a = (double **) a;
@@ -114,19 +110,21 @@ int main(int argc, char *argv[])
 		for (i = 0; i < p; i++)
 			pthread_join(p_threads[i], NULL);
 	}
-	end = GetTimeStamp();
+	clock_gettime(CLOCK_REALTIME, &end);
 
-	elapsed = end - begin;
+	elapsed_p = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + (end.tv_nsec - begin.tv_nsec);
 	printf("Multi thread computaion end\n");
-	printf("elapsed time: %ld (usec)\n", end - begin);
+	printf("elapsed time: %ld (nsec)\n", elapsed_p);
 
 	printf("Single thread computaion start\n");
-	begin = GetTimeStamp();
+	clock_gettime(CLOCK_REALTIME, &begin);
 	mul_matrix_single(n, a, b, answer);
-	end = GetTimeStamp();
-	elapsed = end - begin;
+	clock_gettime(CLOCK_REALTIME, &end);
+	elapsed_s = SEC_TO_NANO(end.tv_sec - begin.tv_sec) + (end.tv_nsec - begin.tv_nsec);
 	printf("Single thread computaion end\n");
-	printf("elapsed time: %ld (sec)\n", elapsed);
+	printf("elapsed time: %ld (nsec)\n", elapsed_s);
+
+	printf("speed up is %g\n", (double) elapsed_s / elapsed_p);
 
 	bool is_correct = true;
 	for (i = 0; i < n && is_correct == true; i++)

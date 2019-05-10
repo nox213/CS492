@@ -10,7 +10,7 @@
 
 #define NANO_TO_SEC(x) ((double) ((x) / 10e9))
 #define NANO_TO_MILI(x) ((long) ((x) / 10e6))
-#define SEC_TO_NANO(x) ((long) ((x) * 10e9))
+#define SEC_TO_NANO(x) (((x) * 1000000000))
 #define SEC_TO_MILI(x) ((long) ((x) * 10e3))
 
 void print_array(int n, double arr[][n]);
@@ -40,8 +40,8 @@ int main(int argc, char *argv[])
 {
 	int n, p;
 	int i, j, k;
-	uint64_t begin, end;
-	long elapsed_s, elapsed_p;
+	uint64_t begin, end, begin_b, end_b;
+	long elapsed_s, elapsed_p, elapsed_b;
 
 	if (argc < 3) {
 		fprintf(stderr, "gaussian.out n p\n");
@@ -137,7 +137,9 @@ int main(int argc, char *argv[])
 			b[i] -= m * b[j];
 		}
 	}
+	begin_b = GetTimeStamp();
 	back_substitution(n, a, b, x);
+	end_b = GetTimeStamp();
 
 	end = GetTimeStamp();
 
