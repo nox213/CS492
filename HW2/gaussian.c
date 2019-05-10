@@ -8,10 +8,7 @@
 #include <omp.h>
 #include <stdint.h>
 
-#define NANO_TO_SEC(x) ((double) ((x) / 10e9))
-#define NANO_TO_MILI(x) ((long) ((x) / 10e6))
-#define SEC_TO_NANO(x) (((x) * 1000000000))
-#define SEC_TO_MILI(x) ((long) ((x) * 10e3))
+#define SEC_TO_NANO(x) ((long) ((x) * 1000000000))
 
 void print_array(int n, double arr[][n]);
 void swap_row(int n, double arr[][n], double b[n], int x, int y);
@@ -36,12 +33,14 @@ static inline double max(const double a, const double b)
 	return a > b ? a : b;
 }
 
+uint64_t elapsed_pivot, begin_pivot, end_pivot;
+
 int main(int argc, char *argv[])
 {
 	int n, p;
 	int i, j, k;
 	uint64_t begin, end, begin_b, end_b;
-	long elapsed_s, elapsed_p, elapsed_b;
+	uint64_t elapsed_s, elapsed_p, elapsed_b;
 
 	if (argc < 3) {
 		fprintf(stderr, "gaussian.out n p\n");
@@ -105,11 +104,16 @@ int main(int argc, char *argv[])
 	printf("Single thread computaion start\n");
 	begin = GetTimeStamp();
 	single_elimination(n, serial_a, serial_b);
+	begin_b = GetTimeStamp();
 	back_substitution(n, serial_a, serial_b, serial_x);
+	end_b = GetTimeStamp();
 	end = GetTimeStamp();
 	elapsed_s = end - begin;
+	elapsed_b = end_b - begin_b;
 	printf("Single thread computaion end\n");
 	printf("elapsed time: %ld (usec)\n", elapsed_s);
+	printf("Proportion of back substitution is %g%%\n", ((double) elapsed_b / elapsed_s) * 100);
+	printf("Proportion of pivoting is %g%%\n", ((double) elapsed_pivot / elapsed_s) * 100);
 
 	double l2norm = 0;
 	for (i = 0; i < n; i++) {
@@ -137,9 +141,7 @@ int main(int argc, char *argv[])
 			b[i] -= m * b[j];
 		}
 	}
-	begin_b = GetTimeStamp();
 	back_substitution(n, a, b, x);
-	end_b = GetTimeStamp();
 
 	end = GetTimeStamp();
 
@@ -250,8 +252,11 @@ void single_elimination(int n, double a[][n], double b[n])
 	int i, j, k;
 
 	for (j = 0; j < n - 1; j++) {
+		begin_pivot = GetTimeStamp();
 		int row_max = maxloc(j, n, a);
 		swap_row(n, a, b, j, row_max); 
+		end_pivot = GetTimeStamp();
+		elapsed_pivot += end_pivot - begin_pivot;
 		for (i = j + 1; i < n; i++) {
 			double m = a[i][j] / a[j][j];
 			for (k = j; k < n; k++) 

@@ -1,0 +1,9 @@
+Matrix: ../matrix/2cubes_sphere.mtx
+Single Thread Computation Start
+Single Thread Computation End: 4307106 us.
+thread num: 6
+OpenMP Computation Start
+OpenMP Computation End: 1214037 us.
+
+Speed up is 3.54776
+correct

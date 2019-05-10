@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
 	int n, p;
 	int i, j, k;
 	uint64_t begin, end;
-	long elapsed_s, elapsed_p;
+	uint64_t elapsed_s, elapsed_p;
 
 	if (argc < 3) {
 		fprintf(stderr, "dense n p\n");
