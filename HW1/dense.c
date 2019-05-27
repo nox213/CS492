@@ -83,6 +83,7 @@ int main(int argc, char *argv[])
 	memset(c, 0, sizeof(double) * (n * n));
 	memset(answer, 0, sizeof(double) * (n * n));
 
+	srand48(time(NULL));
 	for (i = 0; i < n; i++) {
 		for (j = 0; j < n; j++) {
 			a[i][j] = drand48();

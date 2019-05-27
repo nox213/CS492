@@ -5,28 +5,18 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/time.h>
-#include <time.h>
 #include <stdint.h>
-#include <omp.h>
+#include <time.h>
 
-#define NANO_TO_SEC(x) ((double) ((x) / 10e9))
-#define NANO_TO_MILI(x) ((long) ((x) / 10e6))
-#define SEC_TO_NANO(x) ((long) ((x) * 10e9))
-#define SEC_TO_MILI(x) ((long) ((x) * 10e3))
+#define TILE_WIDTH 20
 
-void mul_matrix_single(int n, double (*a)[n], double (*b)[n], double (*answer)[n]);
 bool nearly_equal(double a, double b, double epsilon); 
-void transepose(int n, double (*m)[n]);
+__global__ void MatrixMulKernel(double *M, double *N, double *P, int Width);
 
 uint64_t GetTimeStamp() {
 	struct timeval tv;
 	gettimeofday(&tv,NULL);
 	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
-}
-
-static inline double min(const double a, const double b)
-{
-	return a < b ? a : b;
 }
 
 static inline int int_min(const int a, const int b)
@@ -50,29 +40,30 @@ int main(int argc, char *argv[])
 	p = strtol(argv[2], NULL, 10);
 
 	double (*a)[n], (*b)[n], (*c)[n], (*answer)[n];
+	int size = sizeof(double) * n * n;
 
-	if ((a = malloc(sizeof(double) * (n * n))) == NULL) {
+	if ((a = (double (*)[n]) malloc(size)) == NULL) {
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
-	if ((b = malloc(sizeof(double) * (n * n))) == NULL) {
+	if ((b = (double (*)[n]) malloc(size)) == NULL) {
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
-	if ((c = malloc(sizeof(double) * (n * n))) == NULL) {
-		fprintf(stderr, "malloc error: %d\n", __LINE__);
-		return 0;
-	}
-
-	if ((answer = malloc(sizeof(double) * (n * n))) == NULL) {
+	if ((c = (double (*)[n]) malloc(size)) == NULL) {
 		fprintf(stderr, "malloc error: %d\n", __LINE__);
 		return 0;
 	}
 
-	memset(a, 0, sizeof(double) * (n * n));
-	memset(b, 0, sizeof(double) * (n * n));
-	memset(c, 0, sizeof(double) * (n * n));
-	memset(answer, 0, sizeof(double) * (n * n));
+	if ((answer = (double (*)[n]) malloc(size)) == NULL) {
+		fprintf(stderr, "malloc error: %d\n", __LINE__);
+		return 0;
+	}
+
+	memset(a, 0, size);
+	memset(b, 0, size);
+	memset(c, 0, size);
+	memset(answer, 0, size);
 
 	srand48(time(NULL));
 	for (i = 0; i < n; i++) {
@@ -82,53 +73,34 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	double *A, *B, *C;
+	dim3 dimGrid(n / TILE_WIDTH, n / TILE_WIDTH, 1);
+	dim3 dimBlock(TILE_WIDTH, TILE_WIDTH, 1);
+
+	cudaMalloc((void **) &A, size);
+	cudaMalloc((void **) &B, size);
+	cudaMalloc((void **) &C, size);
+
+	cudaMemcpy(A, (void **) a, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(B, (void **) b, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(C, (void **) c, size, cudaMemcpyHostToDevice);
+
 	printf("Single thread computaion start\n");
 	begin = GetTimeStamp();
-	mul_matrix_single(n, a, b, answer);
+	for (i = 0; i < n; i++)
+		for (j = 0; j < n; j++)
+			for (k = 0; k < n; k++)
+				answer[i][j] += a[i][k] * b[k][j];
 	end = GetTimeStamp();
 	elapsed_s = end - begin;
 	printf("Single thread computaion end\n");
 	printf("elapsed time: %ld (usec)\n", elapsed_s);
 
-	int block = 50;
-	int block_per_row = n / block;
-	int num_block = block_per_row * block_per_row;
 
 	printf("Multi thread computaion start\n");
 	begin = GetTimeStamp();
-	omp_set_num_threads(p);
-#pragma omp parallel shared(a, b, c, n, block, p, block_per_row, num_block) private(i, j, k) 
-	{
-		int tid = omp_get_thread_num();
-		int block_per_thread = num_block / p;
-		int block_start = (block_per_thread * tid);
-		int bs;
-		int cur_block;
-		double (*local)[n] = malloc(sizeof(double) * n * n);
-
-		if (tid == p - 1)
-			block_per_thread += num_block % p;
-		
-		memset(local, 0, sizeof(double) * n * n);
-
-		for (bs = block_start, cur_block = 0; cur_block < block_per_thread; cur_block++) {
-			int jj = (bs + cur_block) / block_per_row * block;
-			int kk = (bs + cur_block) % block_per_row * block;
-			for (i = 0; i < n; i++) {
-				for (j = jj; j < jj + block; j++) {
-					double sum = 0;
-					for (k = kk; k < kk + block; k++) {
-						sum += a[i][k] * b[k][j];
-					}
-					local[i][j] += sum;
-				}
-			}
-		}
-#pragma omp critical
-		for (i = 0; i < n; i++)
-			for (j = 0; j < n; j++)
-				c[i][j] += local[i][j];
-	}
+	MatrixMulKernel<<<dimGrid, dimBlock>>>(A, B, C, n);
+	cudaMemcpy(c, C, size, cudaMemcpyDeviceToHost);
 	end = GetTimeStamp();
 
 	elapsed_p = end - begin;
@@ -151,40 +123,12 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-
-void mul_matrix_single(int n, double (*a)[n], double (*b)[n], double (*answer)[n])
-{
-	int i, j, k;
-
-	for (i = 0; i < n; i++)
-		for (j = 0; j < n; j++)
-			for (k = 0; k < n; k++)
-				answer[i][j] += a[i][k] * b[k][j];
-}
-
-void transepose(int n, double (*m)[n])
-{
-	int i, j;
-	double (*temp)[n];
-
-	temp = malloc(sizeof(double) * n * n);
-
-	for (i = 0; i < n; i++)
-		for (j = 0; j < n; j++)
-			temp[j][i] = m[i][j];
-
-	memcpy(m, temp, sizeof(double) * n * n);
-}
-
 bool nearly_equal(double a, double b, double epsilon) 
 {
 	double abs_a = fabs(a);
 	double abs_b = fabs(b);
 	double diff = fabs(a - b);
-	double double_min_normal;
 	long temp = 1;
-
-	double_min_normal = *((double *) &temp);
 
 	if (epsilon == 0)
 		epsilon = 0.00001;
@@ -199,3 +143,29 @@ bool nearly_equal(double a, double b, double epsilon)
 		return diff / min((abs_a + abs_b), DBL_MAX) < epsilon;
 	}
 }
+
+__global__ void MatrixMulKernel(double *M, double *N, double *P, int Width)
+{
+	__shared__ double subTileM[TILE_WIDTH][TILE_WIDTH];
+	__shared__ double subTileN[TILE_WIDTH][TILE_WIDTH];
+
+	int bx = blockIdx.x;
+	int by = blockIdx.y;
+	int tx = threadIdx.x;
+	int ty = threadIdx.y;
+
+	int Row = by * TILE_WIDTH + ty;
+	int Col = bx * TILE_WIDTH + tx;
+	double Pvalue = 0;
+
+	for (int m = 0; m < Width / TILE_WIDTH; m++) {
+		subTileM[ty][tx] = M[Row*Width+m*TILE_WIDTH+tx];
+		subTileN[ty][tx] = N[(m*TILE_WIDTH+ty)*Width+Col];
+		__syncthreads();
+		for (int k = 0; k < TILE_WIDTH; k++)
+			Pvalue += subTileM[ty][k] * subTileN[k][tx];
+		__syncthreads();
+	}
+	P[Row*Width+Col] = Pvalue;
+}
+

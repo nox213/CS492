@@ -101,6 +101,7 @@ int main(int argc, char *argv[])
 	memset(serial_b, 0, sizeof(double) * n);
 	memset(serial_x, 0, sizeof(double) * n);
 
+	srand48(time(NULL));
 	for (i = 0; i < n; i++) {
 		B[i] = serial_b[i] = b[i] = drand48();
 		for (j = 0; j < n; j++) {
