@@ -19,25 +19,19 @@ uint64_t GetTimeStamp() {
 	return tv.tv_sec*(uint64_t)1000000+tv.tv_usec;
 }
 
-static inline int int_min(const int a, const int b)
-{
-	return a < b ? a : b;
-}
-
 int main(int argc, char *argv[])
 {
-	int n, p;
+	int n;
 	int i, j, k;
 	uint64_t begin, end;
 	uint64_t elapsed_s, elapsed_p;
 
-	if (argc < 3) {
-		fprintf(stderr, "dense n p\n");
+	if (argc < 2) {
+		fprintf(stderr, "dense n\n");
 		return 0;
 	}
 
 	n = strtol(argv[1], NULL, 10);
-	p = strtol(argv[2], NULL, 10);
 
 	double (*a)[n], (*b)[n], (*c)[n], (*answer)[n];
 	int size = sizeof(double) * n * n;
@@ -81,10 +75,7 @@ int main(int argc, char *argv[])
 	cudaMalloc((void **) &B, size);
 	cudaMalloc((void **) &C, size);
 
-	cudaMemcpy(A, (void **) a, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(B, (void **) b, size, cudaMemcpyHostToDevice);
-	cudaMemcpy(C, (void **) c, size, cudaMemcpyHostToDevice);
-
+	/*
 	printf("Single thread computaion start\n");
 	begin = GetTimeStamp();
 	for (i = 0; i < n; i++)
@@ -95,9 +86,12 @@ int main(int argc, char *argv[])
 	elapsed_s = end - begin;
 	printf("Single thread computaion end\n");
 	printf("elapsed time: %ld (usec)\n", elapsed_s);
-
+	*/
 
 	printf("Multi thread computaion start\n");
+	cudaMemcpy(A, (void **) a, size, cudaMemcpyHostToDevice);
+	cudaMemcpy(B, (void **) b, size, cudaMemcpyHostToDevice);
+
 	begin = GetTimeStamp();
 	MatrixMulKernel<<<dimGrid, dimBlock>>>(A, B, C, n);
 	cudaMemcpy(c, C, size, cudaMemcpyDeviceToHost);
@@ -119,6 +113,9 @@ int main(int argc, char *argv[])
 			}
 
 	printf("%s\n", is_correct ? "correct" : "wrong");
+	cudaFree(A);
+	cudaFree(B);
+	cudaFree(C);
 
 	return 0;
 }
@@ -128,7 +125,6 @@ bool nearly_equal(double a, double b, double epsilon)
 	double abs_a = fabs(a);
 	double abs_b = fabs(b);
 	double diff = fabs(a - b);
-	long temp = 1;
 
 	if (epsilon == 0)
 		epsilon = 0.00001;
