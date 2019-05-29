@@ -7,6 +7,8 @@
 #include <cfloat>
 #include <omp.h>
 
+#define TILE_WIDTH 16
+
 using namespace std;
 
 bool nearly_equal(float a, float b, float epsilon);
@@ -104,42 +106,28 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 		{
 			int32_t B_row = A->col[j];
 
-			for(int32_t k = 0; k < B->ncol; k++)
+			for(int32_t k = 0; k < B->ncol; k++) 
 				C->val[i * C->ncol + k] += A->val[j] * B->val[B_row * B->ncol + k];
 		}
 	}
 }
-void multiply_pthread(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
+
+__global__ void multiply_kernel(int32_t *a_row, int32_t *a_col, float *a_val, float *b_val, float *c_val, 
+		int a_nrow, int a_ncol, int b_nrow, int b_ncol)
 {
-	// TODO: Implement matrix multiplication with pthread. C=A*B
-}
+	int bx = blockIdx.x;
+	int by = blockIdx.y;
+	int tx = threadIdx.x;
+	int ty = threadIdx.y;
 
-void multiply_openmp(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx *C)
-{
-	// TODO: Implement matrix multiplication with openmp. C=A*B
-	C->nrow = A->nrow;
-	C->ncol = B->ncol;
-	C->val = (float *)malloc(C->nrow * C->ncol * sizeof(float));
+	int row = by * blockDim.y + ty;
+	int col = bx * blockDim.x + tx;
+	float temp = 0;
 
-	if(C->val == NULL)
-		return;
-
-	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
-	// TODO: Implement matrix multiplication with single thread. C=A*B
-	#pragma omp parallel for shared(A, B, C) schedule(static) 
-	for(int32_t i = 0; i < A->nrow; i++)
-	{
-		int32_t A_col_start = A->row[i];
-		int32_t A_col_stop = A->row[i + 1];
-
-		for(int32_t j = A_col_start; j < A_col_stop; j++)
-		{
-			int32_t B_row = A->col[j];
-
-			for(int32_t k = 0; k < B->ncol; k++)
-				C->val[i * C->ncol + k] += A->val[j] * B->val[B_row * B->ncol + k];
-		}
-	}
+	if (row < a_nrow && col < b_ncol)
+		for (int i = a_row[row]; i < a_row[row+1]; i++) 
+			temp += a_val[i] * b_val[a_col[i]*b_ncol+col];
+	c_val[row*b_ncol+col] = temp;
 }
 
 uint64_t GetTimeStamp() {
@@ -151,7 +139,6 @@ uint64_t GetTimeStamp() {
 int main(int argc, char **argv)
 {
 	struct sparse_mtx A;
-	int p;
 
 	if(!SCsrMatrixfromFile(&A, argv[1]))
 	{
@@ -183,7 +170,11 @@ int main(int argc, char **argv)
 
 	struct dense_mtx C1, C2;
 	C1.val = NULL;
+	C1.nrow = A.nrow;
+	C1.ncol = B.ncol;
 	C2.val = NULL;
+	C2.nrow = A.nrow;
+	C2.ncol = B.ncol;
 
 	uint64_t time_s, time_p;
 
@@ -194,16 +185,44 @@ int main(int argc, char **argv)
 	std::cout << "Single Thread Computation End: " << end - start  << " us." << std::endl;
 	time_s = end - start;
 
+	int32_t *a_row;
+	int32_t *a_col;
+	float *a_val;
+	float *b_val;
+	float *c_val;
+	int grid_x, grid_y;
 
-	p = atoi(argv[3]);
-	omp_set_num_threads(p);
-	printf("thread num: %d\n", p);
+	grid_x = C2.nrow / TILE_WIDTH;
+	if (C2.nrow % TILE_WIDTH)
+		grid_x++;
+	grid_y = C2.ncol / TILE_WIDTH;
+	if (C2.ncol % TILE_WIDTH)
+		grid_y++;
+	dim3 dimGrid(grid_x, grid_y, 1);
+	dim3 dimBlock(TILE_WIDTH, TILE_WIDTH, 1);
 
-	std::cout << "OpenMP Computation Start" << std::endl;
+	cudaMalloc(&a_row, sizeof(int32_t) * A.nrow);
+	cudaMalloc(&a_col, sizeof(int32_t) * A.ncol);
+	cudaMalloc(&a_val, sizeof(float) * A.nnze);
+	cudaMalloc(&b_val, sizeof(float) * B.nrow * B.ncol);
+	cudaMalloc(&c_val, sizeof(float) * C2.nrow * C2.ncol);
+	C2.val = (float *) malloc(sizeof(float) * C2.nrow * C2.ncol);
+	memset(C2.val, 0, sizeof(float)  * C2.nrow * C2.ncol);
+
+	std::cout << "Cuda Computation Start" << std::endl;
 	start = GetTimeStamp();
-	multiply_openmp(&A, &B, &C2);
+
+	cudaMemcpy(a_row, A.row, sizeof(int32_t) * A.nrow, cudaMemcpyHostToDevice);
+	cudaMemcpy(a_col, A.col, sizeof(int32_t) * A.ncol, cudaMemcpyHostToDevice);
+	cudaMemcpy(a_val, A.val, sizeof(float) * A.nnze, cudaMemcpyHostToDevice);
+	cudaMemcpy(b_val, B.val, sizeof(float) * B.nrow * B.ncol, cudaMemcpyHostToDevice);
+
+	multiply_kernel<<<dimGrid, dimBlock>>>(a_row, a_col, a_val, b_val, c_val, A.nrow, A.ncol,
+			B.nrow, B.ncol);
+	cudaMemcpy(C2.val, c_val, sizeof(float) * C2.nrow * C2.ncol, cudaMemcpyDeviceToHost);
+
 	end = GetTimeStamp();
-	std::cout << "OpenMP Computation End: " << end - start << " us." << std::endl << std::endl;
+	std::cout << "Cuda Computation End: " << end - start << " us." << std::endl << std::endl;
 	time_p = end - start;
 
 	printf("Speed up is %g\n", (double) time_s / time_p);
@@ -229,6 +248,12 @@ int main(int argc, char **argv)
 	if(C2.val != NULL)
 		free(C2.val);
 
+	cudaFree(a_row);
+	cudaFree(a_col);
+	cudaFree(a_val);
+	cudaFree(b_val);
+	cudaFree(c_val);
+
 	return 0;
 }
 
@@ -238,11 +263,9 @@ bool nearly_equal(float a, float b, float epsilon)
 	float abs_b = abs(b);
 	float diff = abs(a - b);
 	float float_min_normal;
-	float float_max;
 	long temp = 1;
 
 	float_min_normal = *((float *) &temp);
-	float_max = numeric_limits<float>::max();
 
 	if (epsilon == 0)
 		epsilon = 0.00001f;

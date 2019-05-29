@@ -16,12 +16,12 @@ gaussian.o : gaussian.cu
 	$(CC) $(OPTION) -c $< -lm
 
 sparse.out : sparse.o mmreader.o mmreader.hpp
-	g++ $(OPTION) -o sparse.out -std=c++11 $< mmreader.o
+	$(CC) $(OPTION) -o sparse.out $< mmreader.o
 
-sparse.o : sparse.cpp mmreader.hpp
-	g++ $(OPTION) -c $< -std=c++11
+sparse.o : sparse.cu mmreader.hpp
+	$(CC) $(OPTION) --std=c++11 -c $< 
 mmreader.o : mmreader.cpp mmreader.hpp
-	g++ $(OPTION) -c $< -std=c++11
+	g++ $(OPTION) --std=c++11 -c $< 
 
 clean :
 	rm -f dense.o dense.out

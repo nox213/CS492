@@ -152,18 +152,11 @@ int main(int argc, char *argv[])
 	}
 	copy_col_kernel<<<n / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_b, device_a, n, n);
 	cudaMemcpy(x, device_b, sizeof(double) * n, cudaMemcpyDeviceToHost);
-	cudaMemcpy(a, device_a, sizeof(double) * n * (n + 1), cudaMemcpyDeviceToHost);
 	end = GetTimeStamp();
 
 	elapsed_p = end - begin;
 	printf("Multi thread computaion end\n");
 	printf("elapsed time: %ld (usec)\n", elapsed_p);
-
-	for (i = 0; i < n; i++) {
-		for (j = 0; j < n + 1; j++)
-			printf("%g ", a[i][j]);
-		putchar('\n');
-	}
 
 	l2norm = 0;
 	for (i = 0; i < n; i++) {

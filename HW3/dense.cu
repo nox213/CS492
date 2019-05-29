@@ -75,7 +75,6 @@ int main(int argc, char *argv[])
 	cudaMalloc((void **) &B, size);
 	cudaMalloc((void **) &C, size);
 
-	/*
 	printf("Single thread computaion start\n");
 	begin = GetTimeStamp();
 	for (i = 0; i < n; i++)
@@ -86,7 +85,6 @@ int main(int argc, char *argv[])
 	elapsed_s = end - begin;
 	printf("Single thread computaion end\n");
 	printf("elapsed time: %ld (usec)\n", elapsed_s);
-	*/
 
 	printf("Multi thread computaion start\n");
 	cudaMemcpy(A, (void **) a, size, cudaMemcpyHostToDevice);
