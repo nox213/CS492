@@ -5,9 +5,9 @@
 #include <unistd.h>
 #include <algorithm>
 #include <cfloat>
-#include <omp.h>
 
 #define TILE_WIDTH 16
+#define PARTIAL_ROW 150000
 
 using namespace std;
 
@@ -113,21 +113,23 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 }
 
 __global__ void multiply_kernel(int32_t *a_row, int32_t *a_col, float *a_val, float *b_val, float *c_val, 
-		int a_nrow, int a_ncol, int b_nrow, int b_ncol)
+		int a_nrow, int b_ncol, int depth, int partial_row)
 {
 	int bx = blockIdx.x;
 	int by = blockIdx.y;
 	int tx = threadIdx.x;
 	int ty = threadIdx.y;
 
-	int row = by * blockDim.y + ty;
+	int row_c = by * blockDim.y + ty;
+	int row = row_c + (partial_row * depth);
 	int col = bx * blockDim.x + tx;
 	float temp = 0;
 
-	if (row < a_nrow && col < b_ncol)
-		for (int i = a_row[row]; i < a_row[row+1]; i++) 
+	if (row < a_nrow && col < b_ncol) {
+		for (int i = a_row[row]; i < a_row[row+1]; i++)  
 			temp += a_val[i] * b_val[a_col[i]*b_ncol+col];
-	c_val[row*b_ncol+col] = temp;
+		c_val[row_c*b_ncol+col] = temp;
+	}
 }
 
 uint64_t GetTimeStamp() {
@@ -191,35 +193,63 @@ int main(int argc, char **argv)
 	float *b_val;
 	float *c_val;
 	int grid_x, grid_y;
+	int depth;
+	int partial_row;
+	int copy_size, remaining_row;
 
-	grid_x = C2.nrow / TILE_WIDTH;
-	if (C2.nrow % TILE_WIDTH)
-		grid_x++;
-	grid_y = C2.ncol / TILE_WIDTH;
+	remaining_row = C2.nrow;
+	partial_row = C2.nrow;
+	depth = 1;
+	if (C2.nrow > PARTIAL_ROW) {
+		partial_row = PARTIAL_ROW;
+		depth = C2.nrow / partial_row;
+		if (C2.nrow % partial_row)
+			depth++;
+	}
+
+	grid_x = C2.ncol / TILE_WIDTH;
 	if (C2.ncol % TILE_WIDTH)
+		grid_x++;
+	grid_y = partial_row / TILE_WIDTH;
+	if (partial_row % TILE_WIDTH)
 		grid_y++;
 	dim3 dimGrid(grid_x, grid_y, 1);
 	dim3 dimBlock(TILE_WIDTH, TILE_WIDTH, 1);
 
-	cudaMalloc(&a_row, sizeof(int32_t) * A.nrow);
-	cudaMalloc(&a_col, sizeof(int32_t) * A.ncol);
-	cudaMalloc(&a_val, sizeof(float) * A.nnze);
-	cudaMalloc(&b_val, sizeof(float) * B.nrow * B.ncol);
-	cudaMalloc(&c_val, sizeof(float) * C2.nrow * C2.ncol);
-	C2.val = (float *) malloc(sizeof(float) * C2.nrow * C2.ncol);
+	if (cudaErrorMemoryAllocation == cudaMalloc(&a_row, sizeof(int32_t) * (A.nrow + 1)))
+		fprintf(stderr, "error1\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&a_col, sizeof(int32_t) * A.nnze))
+		fprintf(stderr, "error2\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&a_val, sizeof(float) * A.nnze))
+		fprintf(stderr, "error3\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&b_val, sizeof(float) * B.nrow * B.ncol))
+		fprintf(stderr, "error4\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&c_val, sizeof(float) * partial_row * C2.ncol)) 
+		fprintf(stderr, "error5\n");
+	if ((C2.val = (float *) malloc(sizeof(float) * C2.nrow * C2.ncol)) == NULL) {
+		fprintf(stderr, "malloc error at %d\n", __LINE__);
+		return 1;
+	}
 	memset(C2.val, 0, sizeof(float)  * C2.nrow * C2.ncol);
 
 	std::cout << "Cuda Computation Start" << std::endl;
 	start = GetTimeStamp();
 
-	cudaMemcpy(a_row, A.row, sizeof(int32_t) * A.nrow, cudaMemcpyHostToDevice);
-	cudaMemcpy(a_col, A.col, sizeof(int32_t) * A.ncol, cudaMemcpyHostToDevice);
+	cudaMemcpy(a_row, A.row, sizeof(int32_t) * (A.nrow + 1), cudaMemcpyHostToDevice);
+	cudaMemcpy(a_col, A.col, sizeof(int32_t) * A.nnze, cudaMemcpyHostToDevice);
 	cudaMemcpy(a_val, A.val, sizeof(float) * A.nnze, cudaMemcpyHostToDevice);
 	cudaMemcpy(b_val, B.val, sizeof(float) * B.nrow * B.ncol, cudaMemcpyHostToDevice);
 
-	multiply_kernel<<<dimGrid, dimBlock>>>(a_row, a_col, a_val, b_val, c_val, A.nrow, A.ncol,
-			B.nrow, B.ncol);
-	cudaMemcpy(C2.val, c_val, sizeof(float) * C2.nrow * C2.ncol, cudaMemcpyDeviceToHost);
+	for (int i = 0; i < depth; i++) {
+		multiply_kernel<<<dimGrid, dimBlock>>>(a_row, a_col, a_val, b_val, c_val, 
+				A.nrow, B.ncol, i, partial_row);
+		copy_size = sizeof(float) * partial_row * C2.ncol;
+		if (remaining_row < partial_row)
+			copy_size = sizeof(float) * remaining_row * C2.ncol;
+		cudaMemcpy(C2.val + (partial_row * i * C2.ncol), c_val, 
+				copy_size, cudaMemcpyDeviceToHost);
+		remaining_row -= partial_row;
+	}
 
 	end = GetTimeStamp();
 	std::cout << "Cuda Computation End: " << end - start << " us." << std::endl << std::endl;
@@ -232,6 +262,7 @@ int main(int argc, char **argv)
 	for (int i = 0; i < C1.nrow && is_correct == true; i++)
 		for (int j = 0; j < C1.ncol; j++)
 			if (!nearly_equal(C1.val[i*C1.ncol+j], C2.val[i*C2.ncol+j], 0)) {
+				printf("i, j: %d %d\n", i, j);
 				printf("%g %g\n", C1.val[i*C1.ncol+j], C2.val[i*C2.ncol+j]);
 				is_correct = false;
 				break;
@@ -262,20 +293,16 @@ bool nearly_equal(float a, float b, float epsilon)
 	float abs_a = abs(a);
 	float abs_b = abs(b);
 	float diff = abs(a - b);
-	float float_min_normal;
-	long temp = 1;
-
-	float_min_normal = *((float *) &temp);
 
 	if (epsilon == 0)
-		epsilon = 0.00001f;
+		epsilon = 0.0001f;
 
 	if (a == b) { // shortcut, handles infinities
 		return true;
 	} else if (a == 0 || b == 0 || diff < FLT_MIN) {
 		// a or b is zero or both are extremely close to it
 		// relative error is less meaningful here
-		return diff < (epsilon * float_min_normal);
+		return diff < (epsilon * FLT_MIN);
 	} else { // use relative error
 		return diff / min((abs_a + abs_b), FLT_MAX) < epsilon;
 	}
