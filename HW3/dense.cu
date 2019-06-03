@@ -8,7 +8,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#define TILE_WIDTH 20
+#define TILE_WIDTH 32
 
 bool nearly_equal(double a, double b, double epsilon); 
 __global__ void MatrixMulKernel(double *M, double *N, double *P, int Width);
@@ -67,13 +67,20 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	int grid_size = n / TILE_WIDTH;
+	if (n % TILE_WIDTH)
+		grid_size++;
+
 	double *A, *B, *C;
-	dim3 dimGrid(n / TILE_WIDTH, n / TILE_WIDTH, 1);
+	dim3 dimGrid(grid_size, grid_size, 1);
 	dim3 dimBlock(TILE_WIDTH, TILE_WIDTH, 1);
 
-	cudaMalloc((void **) &A, size);
-	cudaMalloc((void **) &B, size);
-	cudaMalloc((void **) &C, size);
+	if (cudaErrorMemoryAllocation == cudaMalloc((void **) &A, size))
+		fprintf(stderr, "error\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc((void **) &B, size))
+		fprintf(stderr, "error\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc((void **) &C, size))
+		fprintf(stderr, "error\n");
 
 	printf("Single thread computaion start\n");
 	begin = GetTimeStamp();
@@ -105,7 +112,8 @@ int main(int argc, char *argv[])
 	for (i = 0; i < n && is_correct == true; i++)
 		for (j = 0; j < n; j++)
 			if (!nearly_equal(c[i][j], answer[i][j], 0)) {
-				printf("%lf %lf\n", c[i][j], answer[i][j]);
+				printf("i: %d j : %d\n", i, j);
+				printf("%g %g\n", c[i][j], answer[i][j]);
 				is_correct = false;
 				break;
 			}
@@ -151,15 +159,25 @@ __global__ void MatrixMulKernel(double *M, double *N, double *P, int Width)
 	int Row = by * TILE_WIDTH + ty;
 	int Col = bx * TILE_WIDTH + tx;
 	double Pvalue = 0;
+	int num_tile = Width / TILE_WIDTH;
+	if (Width % TILE_WIDTH)
+		num_tile++;
 
-	for (int m = 0; m < Width / TILE_WIDTH; m++) {
-		subTileM[ty][tx] = M[Row*Width+m*TILE_WIDTH+tx];
-		subTileN[ty][tx] = N[(m*TILE_WIDTH+ty)*Width+Col];
+	for (int m = 0; m < num_tile; m++) {
+		if (m * TILE_WIDTH + tx < Width ) 
+			subTileM[ty][tx] = M[Row*Width+m*TILE_WIDTH+tx];
+		else
+			subTileM[ty][tx] = 0;
+		if (m * TILE_WIDTH + ty < Width)
+			subTileN[ty][tx] = N[(m*TILE_WIDTH+ty)*Width+Col];
+		else 
+			subTileN[ty][tx] = 0;
 		__syncthreads();
 		for (int k = 0; k < TILE_WIDTH; k++)
 			Pvalue += subTileM[ty][k] * subTileN[k][tx];
 		__syncthreads();
 	}
-	P[Row*Width+Col] = Pvalue;
+	if (Row < Width && Col < Width)
+		P[Row*Width+Col] = Pvalue;
 }
 

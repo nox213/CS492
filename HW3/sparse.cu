@@ -97,6 +97,7 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 
 	memset(C->val, 0, sizeof(float) * C->nrow * C->ncol);
 	// TODO: Implement matrix multiplication with single thread. C=A*B
+	/*
 	for(int32_t i = 0; i < A->nrow; i++)
 	{
 		int32_t A_col_start = A->row[i];
@@ -108,6 +109,20 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 
 			for(int32_t k = 0; k < B->ncol; k++) 
 				C->val[i * C->ncol + k] += A->val[j] * B->val[B_row * B->ncol + k];
+		}
+	}
+	*/
+	for (int i = 0; i < A->nrow; i++) {
+		for (int j = 0; j < B->ncol; j++) {
+			float temp = 0;
+			for (int k = A->row[i]; k < A->row[i+1]; k++) {
+				temp += A->val[k] * B->val[A->col[k]*B->ncol+j];
+				if (i == 13714 && j == 1686)
+					printf("%g %g\n", A->val[k], B->val[A->col[k]*B->ncol+j]);
+			}
+			C->val[i*C->ncol+j] = temp;
+			if (i == 13714 && j == 1686)
+				printf("%g\n", C->val[i*C->ncol+j]);
 		}
 	}
 }
@@ -126,8 +141,13 @@ __global__ void multiply_kernel(int32_t *a_row, int32_t *a_col, float *a_val, fl
 	float temp = 0;
 
 	if (row < a_nrow && col < b_ncol) {
-		for (int i = a_row[row]; i < a_row[row+1]; i++)  
+		for (int i = a_row[row]; i < a_row[row+1]; i++)   {
 			temp += a_val[i] * b_val[a_col[i]*b_ncol+col];
+			if (row == 13714 && col == 1686)
+				printf("%g %g\n", a_val[i], b_val[a_col[i]*b_ncol+col]);
+		}
+		if (row == 13714 && col == 1686)
+			printf("%g\n", temp);
 		c_val[row_c*b_ncol+col] = temp;
 	}
 }
@@ -161,7 +181,7 @@ int main(int argc, char **argv)
 	}
 	B.val = (float *)malloc(sizeof(float) * B.nrow * B.ncol);
 
-	srand((unsigned int)time(NULL));
+	//srand((unsigned int)time(NULL));
 	for(int i = 0; i < B.nrow; i++)
 	{
 		for(int j = 0; j < B.ncol; j++)
@@ -295,7 +315,7 @@ bool nearly_equal(float a, float b, float epsilon)
 	float diff = abs(a - b);
 
 	if (epsilon == 0)
-		epsilon = 0.0001f;
+		epsilon = 0.1f;
 
 	if (a == b) { // shortcut, handles infinities
 		return true;
