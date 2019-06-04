@@ -22,7 +22,7 @@ __global__ void swap_row_2(double *a, double *temp, int n, int row1, int row2);
 __global__ void swap_row_3(double *a, double *temp, int n, int row2);
 __global__ void make_mul(double *a, double *m, int n, int j);
 __global__ void gaussian_elimination(double *a, double *m, int n, int j);
-__global__ void pivot_to_one(double *a, int n, double m, int pivot);
+__global__ void pivot_to_one(double *a, int n, double *temp, int pivot);
 
 uint64_t GetTimeStamp() {
 	struct timeval tv;
@@ -131,10 +131,16 @@ int main(int argc, char *argv[])
 	double *device_a, *device_b, *device_temp, *col, *device_m;
 	dim3 dimGrid(n / TILE_WIDTH + 1, (n + 1) / TILE_WIDTH + 1, 1);
 	dim3 dimBlock(TILE_WIDTH, TILE_WIDTH, 1);
-	cudaMalloc(&device_a, sizeof(double) * n * (n + 1));
-	cudaMalloc(&device_b, sizeof(double) * n);
-	cudaMalloc(&device_temp, sizeof(double) * (n + 1));
-	cudaMalloc(&device_m, sizeof(double) * n);
+
+	if (cudaErrorMemoryAllocation == cudaMalloc(&device_a, sizeof(double) * n * (n + 1)))
+		fprintf(stderr, "error\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&device_b, sizeof(double) * n))
+		fprintf(stderr, "error\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&device_temp, sizeof(double) * (n + 1)))
+		fprintf(stderr, "error\n");
+	if (cudaErrorMemoryAllocation == cudaMalloc(&device_m, sizeof(double) * n))
+		fprintf(stderr, "error\n");
+
 	col = (double *) malloc(sizeof(double) * n);
 	cudaMemcpy(device_a, (void **) a, sizeof(double) * (n + 1) * n, cudaMemcpyHostToDevice);
 	for (j = 0; j < n; j++) {
@@ -145,8 +151,7 @@ int main(int argc, char *argv[])
 		swap_row_2<<<(n + 1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_a, device_temp, n, row_max, j);
 		swap_row_3<<<(n + 1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_a, device_temp, n, j);
 		copy_col_kernel<<<n / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_temp, device_a, n, j);
-		cudaMemcpy(col, device_temp, sizeof(double) * n, cudaMemcpyDeviceToHost);
-		pivot_to_one<<<(n + 1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_a, n, col[j], j);
+		pivot_to_one<<<(n + 1) / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_a, n, device_temp, j);
 		make_mul<<<n / BLOCK_SIZE + 1, BLOCK_SIZE>>>(device_a, device_m, n, j);
 		gaussian_elimination<<<dimGrid, dimBlock>>>(device_a, device_m, n, j);
 	}
@@ -312,7 +317,7 @@ __global__ void gaussian_elimination(double *a, double *m, int n, int j)
 		a[row * (n + 1) + col] -= m[row] * a[j * (n + 1) + col];
 }
 
-__global__ void pivot_to_one(double *a, int n, double m, int pivot)
+__global__ void pivot_to_one(double *a, int n, double* temp, int pivot)
 {
 	int bx = blockIdx.x;
 	int tx = threadIdx.x;
@@ -320,5 +325,5 @@ __global__ void pivot_to_one(double *a, int n, double m, int pivot)
 	int col  = bx * blockDim.x + tx;
 
 	if (col < n + 1)
-		a[pivot * (n + 1) + col] /= m;
+		a[pivot * (n + 1) + col] /= temp[pivot];
 }
