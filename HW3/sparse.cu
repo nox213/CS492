@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cfloat>
 
-#define TILE_WIDTH 16
+#define TILE_WIDTH 32
 #define PARTIAL_ROW 150000
 
 using namespace std;
@@ -110,21 +110,6 @@ void multiply_single(struct sparse_mtx *A, struct dense_mtx *B, struct dense_mtx
 				C->val[i * C->ncol + k] += A->val[j] * B->val[B_row * B->ncol + k];
 		}
 	}
-	/*
-	for (int i = 0; i < A->nrow; i++) {
-		for (int j = 0; j < B->ncol; j++) {
-			float temp = 0;
-			for (int k = A->row[i]; k < A->row[i+1]; k++) {
-				temp += A->val[k] * B->val[A->col[k]*B->ncol+j];
-				if (i == 13714 && j == 1686)
-					printf("%g %g\n", A->val[k], B->val[A->col[k]*B->ncol+j]);
-			}
-			C->val[i*C->ncol+j] = temp;
-			if (i == 13714 && j == 1686)
-				printf("%g\n", C->val[i*C->ncol+j]);
-		}
-	}
-	*/
 }
 
 __global__ void multiply_kernel(int32_t *a_row, int32_t *a_col, float *a_val, float *b_val, float *c_val, 
@@ -141,7 +126,7 @@ __global__ void multiply_kernel(int32_t *a_row, int32_t *a_col, float *a_val, fl
 	float temp = 0;
 
 	if (row < a_nrow && col < b_ncol) {
-		for (int i = a_row[row]; i < a_row[row+1]; i++)   
+		for (int i = a_row[row]; i < a_row[row+1]; i++)    
 			temp += a_val[i] * b_val[a_col[i]*b_ncol+col];
 		c_val[row_c*b_ncol+col] = temp;
 	}
@@ -255,10 +240,10 @@ int main(int argc, char **argv)
 	cudaMemcpy(a_val, A.val, sizeof(float) * A.nnze, cudaMemcpyHostToDevice);
 	cudaMemcpy(b_val, B.val, sizeof(float) * B.nrow * B.ncol, cudaMemcpyHostToDevice);
 
+	copy_size = sizeof(float) * partial_row * C2.ncol;
 	for (int i = 0; i < depth; i++) {
 		multiply_kernel<<<dimGrid, dimBlock>>>(a_row, a_col, a_val, b_val, c_val, 
 				A.nrow, B.ncol, i, partial_row);
-		copy_size = sizeof(float) * partial_row * C2.ncol;
 		if (remaining_row < partial_row)
 			copy_size = sizeof(float) * remaining_row * C2.ncol;
 		cudaMemcpy(C2.val + (partial_row * i * C2.ncol), c_val, 
@@ -310,7 +295,7 @@ bool nearly_equal(float a, float b, float epsilon)
 	float diff = abs(a - b);
 
 	if (epsilon == 0)
-		epsilon = 0.1f;
+		epsilon = 0.00001f;
 
 	if (a == b) { // shortcut, handles infinities
 		return true;

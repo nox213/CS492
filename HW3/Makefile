@@ -1,4 +1,4 @@
-OPTION =
+OPTION = -O2
 CC = nvcc
 
 all : dense.out gaussian.out sparse.out
@@ -16,10 +16,10 @@ gaussian.o : gaussian.cu
 	$(CC) $(OPTION) -c $< -lm
 
 sparse.out : sparse.o mmreader.o mmreader.hpp
-	$(CC) $(OPTION) -o sparse.out $< mmreader.o
+	$(CC) $(OPTION) --fmad=false  -o sparse.out $< mmreader.o
 
 sparse.o : sparse.cu mmreader.hpp
-	$(CC) $(OPTION) --std=c++11 -c $< 
+	$(CC) $(OPTION) --fmad=false --std=c++11 -c $< 
 mmreader.o : mmreader.cpp mmreader.hpp
 	g++ $(OPTION) --std=c++11 -c $< 
 

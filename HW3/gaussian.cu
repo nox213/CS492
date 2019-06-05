@@ -9,13 +9,12 @@
 #include <stdint.h>
 
 #define SEC_TO_NANO(x) (((x) * 1000000000L))
-#define TILE_WIDTH 16
+#define TILE_WIDTH 32
 #define BLOCK_SIZE 32
 
 void swap_row(int n, double *arr, double *b, int x, int y);
 void back_substitution(int n, double *a, double *b, double *x);
 int maxloc(int start, int n, double *a);
-bool nearly_equal(double a, double b, double epsilon); 
 __global__ void copy_col_kernel(double *temp, double *a, int n, int j);
 __global__ void swap_row_1(double *a, double *temp, int n, int row1);
 __global__ void swap_row_2(double *a, double *temp, int n, int row1, int row2);
@@ -178,26 +177,6 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-bool nearly_equal(double a, double b, double epsilon) 
-{
-	double abs_a = fabs(a);
-	double abs_b = fabs(b);
-	double diff = fabs(a - b);
-
-	if (epsilon == 0)
-		epsilon = 0.00001;
-
-	if (a == b) { // shortcut, handles infinities
-		return true;
-	} else if (a == 0 || b == 0 || diff < DBL_MIN) {
-		// a or b is zero or both are extremely close to it
-		// relative error is less meaningful here
-		return diff < (epsilon * DBL_MIN);
-	} else { // use relative error
-		return diff / min((abs_a + abs_b), DBL_MAX) < epsilon;
-	}
-}
-
 int maxloc(int start, int n, double *col)
 {
 	int i, row_max;
@@ -302,8 +281,8 @@ __global__ void make_mul(double *a, double *m, int n, int j)
 
 __global__ void gaussian_elimination(double *a, double *m, int n, int j)
 {
-	//	__shared__ double sub_m[TILE_WIDTH];
-	//	__shared__ double 
+//	__shared__ double sub_m[TILE_WIDTH];
+//	__shared__ double sub_a[TILE_WIDTH];
 
 	int bx = blockIdx.x;
 	int by = blockIdx.y;
